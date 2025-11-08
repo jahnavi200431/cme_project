@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gke-rest-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: gke-rest-api
+  template:
+    metadata:
+      labels:
+        app: gke-rest-api
+    spec:
+      containers:
+        - name: gke-rest-api
+          image: us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:latest
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - secretRef:
+                name: db-secret
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+      restartPolicy: Always
