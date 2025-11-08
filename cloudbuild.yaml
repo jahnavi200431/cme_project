@@ -1,36 +1,62 @@
 # cloudbuild.yaml
+
+# Use Cloud Logging for logs
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+# Substitutions (you can override these when running)
+substitutions:
+  _REGION: "us-central1"
+  _PROJECT_ID: "my-project-app-477009"
+  _REPO_NAME: "product-repo"
+  _IMAGE_NAME: "gke-rest-api"
+  _CLUSTER_NAME: "gke-cluster"
+  _DEPLOYMENT_NAME: "gke-rest-api"
+  _NAMESPACE: "default"
+
 steps:
   # Step 1: Build Docker image
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      [
-        'build',
-        '-t',
-        'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$SHORT_SHA',
-        '.'
-      ]
+  - name: "gcr.io/cloud-builders/docker"
+    args: [
+      "build",
+      "-t", "us-central1-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA",
+      "."
+    ]
 
   # Step 2: Push Docker image to Artifact Registry
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      [
-        'push',
-        'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$SHORT_SHA'
-      ]
+  - name: "gcr.io/cloud-builders/docker"
+    args: [
+      "push",
+      "us-central1-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA"
+    ]
 
-  # Step 3: Update GKE deployment to use new image
-  - name: 'gcr.io/cloud-builders/kubectl'
+  # Step 3: Set up kubectl
+  - name: "gcr.io/cloud-builders/gcloud"
+    entrypoint: "bash"
     args:
-      [
-        'set',
-        'image',
-        'deployment/gke-rest-api',
-        'gke-rest-api=us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$SHORT_SHA'
-      ]
-    env:
-      - 'CLOUDSDK_COMPUTE_REGION=us-central1'
-      - 'CLOUDSDK_CONTAINER_CLUSTER=gke-rest-api-cluster'
+      - "-c"
+      - |
+        echo "Getting credentials for GKE cluster..."
+        gcloud container clusters get-credentials ${_CLUSTER_NAME} --zone ${_REGION} --project ${_PROJECT_ID}
 
-# Substitute $SHORT_SHA for the short commit hash automatically
+  # Step 4: Update deployment image in GKE
+  - name: "gcr.io/cloud-builders/kubectl"
+    args:
+      - "set"
+      - "image"
+      - "deployment/${_DEPLOYMENT_NAME}"
+      - "${_IMAGE_NAME}=us-central1-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA"
+      - "-n"
+      - "${_NAMESPACE}"
+
+  # Step 5: Optional – verify rollout status
+  - name: "gcr.io/cloud-builders/kubectl"
+    args:
+      - "rollout"
+      - "status"
+      - "deployment/${_DEPLOYMENT_NAME}"
+      - "-n"
+      - "${_NAMESPACE}"
+
 images:
-  - 'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$SHORT_SHA'
+  - "us-central1-docker.pkg.dev/${_PROJECT_ID}/${_REPO_NAME}/${_IMAGE_NAME}:$SHORT_SHA"

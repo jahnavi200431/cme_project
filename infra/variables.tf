@@ -33,4 +33,3 @@ variable "artifact_repo_name" {
   type    = string
   default = "product-repo"
 }
-

@@ -8,7 +8,6 @@ app = Flask(__name__)
 def health():
     return {'status': 'healthy'}, 200
 
-# Database Configuration (Cloud SQL or Local)
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
@@ -168,4 +167,3 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=True)
-
