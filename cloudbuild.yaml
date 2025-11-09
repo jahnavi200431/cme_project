@@ -10,7 +10,7 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
   # timeout: '1200s'
-#serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
+serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE: Build the Docker image
@@ -24,7 +24,7 @@ steps:
     - '.'  # Build context: tells Docker to look for the Dockerfile in the current directory
   env:
     - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
+ # serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 # ------------------------------------------------------------------------------
 # 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
 # ------------------------------------------------------------------------------
