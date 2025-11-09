@@ -10,7 +10,7 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
   # timeout: '1200s'
-serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
+#serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE: Build the Docker image
