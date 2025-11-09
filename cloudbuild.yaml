@@ -4,7 +4,8 @@
 # Global options for the entire build
 # This block MUST be at the top level, with no indentation.
  # Set a longer timeout (20 minutes = 1200 seconds) for the entire build.
-                  # This helps prevent builds from timing out during longer deployment or test phases.
+options:
+  timeout: '1200s'                # This helps prevent builds from timing out during longer deployment or test phases.
 
 steps:
 # ------------------------------------------------------------------------------
