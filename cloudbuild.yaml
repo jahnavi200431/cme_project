@@ -1,143 +1,118 @@
-#options:
-#  timeout: '1200s' # Set a longer timeout (20 minutes = 1200 seconds) for the entire build.
+# ---------------------------------------------------------------------
+# 🌩️ Cloud Build CI/CD Pipeline for GKE REST API Deployment
+# ---------------------------------------------------------------------
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
+  timeout: '1200s' # 20 minutes total timeout
+
+# ✅ Use the Cloud Build Deployer service account (recommended)
+# Replace below with your Cloud Build Deployer SA if created
+serviceAccount: 'projects/my-project-app-477009/serviceAccounts/cloudbuild-deployer@my-project-app-477009.iam.gserviceaccount.com'
+
 steps:
-# ------------------------------------------------------------------------------
-# 1️⃣ BUILD PHASE: Build the Docker image
-# ------------------------------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/docker'
-    id: 'Build Image'
-    args:
-      [
-        'build', 
-        '-t', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA',
-        '-t', 'gcr.io/my-project-app-477009/gke-rest-api:latest',
-        '.'
-      ]
-
-
-# ------------------------------------------------------------------------------
-# 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# 1️⃣ BUILD PHASE — Build Docker image
+# ---------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
-  id: 'Push Docker Image'
+  id: 'Build Docker Image'
   args:
-    - 'push'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$COMMIT_SHA'
+    - 'build'
+    - '-t'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+    - '.'
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+
+# ---------------------------------------------------------------------
+# 2️⃣ PUSH PHASE — Push image to Artifact Registry
+# ---------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push Docker Image'
   args:
     - 'push'
     - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
-  # STEP 3: Configure access to GKE cluster
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Get GKE Credentials'
-    args:
-      [
-        'container', 'clusters', 'get-credentials',
-        'product-gke-cluster',        # <-- your cluster name
-        '--zone', 'us-central1-a', # <-- your cluster zone/region
-        '--project', 'my-project-app-477009'
-      ]
-
-  # STEP 4: Update image in Kubernetes deployment
-  - name: 'gcr.io/cloud-builders/kubectl'
-    id: 'Deploy to GKE'
-    args:
-      [
-        'set', 'image', 'deployment/my-app-deployment',
-        'my-app-container=gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA'
-      ]
-
-# ------------------------------------------------------------------------------
-# 4️⃣ POST-DEPLOYMENT CHECKS: Verify the deployment and application health (with diagnostics)
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# 3️⃣ DEPLOY PHASE — Deploy to GKE
+# ---------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/gcloud'
-  id: 'Post-Deployment Checks'
+  id: 'Deploy to GKE'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      echo "🔍 Running enhanced health checks..."
+      echo "📦 Starting deployment to GKE..."
 
-      LB_IP=""
+      # Authenticate to cluster
+      gcloud container clusters get-credentials product-gke-cluster \
+        --zone=us-central1-a \
+        --project=my-project-app-477009
+
+      echo "🔧 Updating deployment manifest image..."
+      sed -i "s|image: .*|image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
+
+      echo "🚀 Applying Kubernetes manifests..."
+      kubectl apply -f k8s/deployment.yaml
+      kubectl apply -f k8s/service.yaml
+
+      echo "⏳ Waiting for rollout..."
+      kubectl rollout status deployment/gke-rest-api --timeout=180s
+
+      echo "✅ Deployment successful."
+
+# ---------------------------------------------------------------------
+# 4️⃣ POST-DEPLOYMENT CHECKS — Verify LoadBalancer & Health
+# ---------------------------------------------------------------------
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: 'Post-Deployment Health Check'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      echo "🔍 Starting health check..."
+
+      # Wait for LoadBalancer external IP
       MAX_RETRIES=12
-      RETRY_COUNT=0
+      RETRY=0
+      LB_IP=""
 
-      # Wait for LoadBalancer IP
-      while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
-        echo "Waiting for LoadBalancer IP... (Retry $$RETRY_COUNT/$$MAX_RETRIES)"
-        sleep 10
+      while [ -z "$LB_IP" ] && [ $RETRY -lt $MAX_RETRIES ]; do
+        echo "Waiting for LoadBalancer IP... (attempt $RETRY)"
         LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
-        RETRY_COUNT=$((RETRY_COUNT + 1))
+        [ -z "$LB_IP" ] && sleep 10
+        RETRY=$((RETRY+1))
       done
 
-      if [ -z "$$LB_IP" ]; then
-        echo "❌ LoadBalancer IP not found after $$MAX_RETRIES retries. Gathering diagnostics..."
-        kubectl get svc gke-rest-api-service -o yaml || true
-        kubectl describe svc gke-rest-api-service || true
-        kubectl get pods -l app=gke-rest-api -o wide || true
-        kubectl describe deployment gke-rest-api || true
-        kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+      if [ -z "$LB_IP" ]; then
+        echo "❌ LoadBalancer IP not available after retries."
+        kubectl get svc gke-rest-api-service -o yaml
         exit 1
       fi
 
-      echo "✅ LoadBalancer IP found: $$LB_IP"
+      echo "✅ Found LoadBalancer IP: $LB_IP"
 
-      # Detect service port so we curl the correct port
-      SVC_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].port}')
-      TARGET_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].targetPort}')
-      echo "Service port: $$SVC_PORT  TargetPort: $$TARGET_PORT"
-
-      # Try curling the service endpoint with retries and connection-refused handling
-      HEALTH_PATH="/products"
-      SUCCESS=0
-      ATTEMPTS=8
-      for i in $(seq 1 $$ATTEMPTS); do
-        echo "Attempt $$i/$$ATTEMPTS: curling http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH ..."
-        # retry on connection refused; -f returns non-zero for HTTP 4xx/5xx
-        curl --max-time 6 --retry 5 --retry-connrefused --retry-delay 2 -f "http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH" && SUCCESS=1 && break || echo "Attempt $$i failed, will retry..."
-        sleep 5
-      done
-
-      if [ $$SUCCESS -ne 1 ]; then
-        echo "❌ Health check failed after $$ATTEMPTS attempts. Gathering diagnostics..."
-
-        echo "---- Pods ----"
-        kubectl get pods -l app=gke-rest-api -o wide || true
-
-        echo "---- Describe Deployment ----"
-        kubectl describe deployment gke-rest-api || true
-
-        echo "---- Describe Service ----"
-        kubectl describe svc gke-rest-api-service || true
-
-        echo "---- Recent Pod Logs (tail=200) ----"
-        # Attempt to get logs from pods matching label; adjust label if different
-        PODS=$(kubectl get pods -l app=gke-rest-api -o name || true)
-        if [ -n "$$PODS" ]; then
-          for p in $$PODS; do
-            echo "---- Logs for $$p ----"
-            kubectl logs $$p --tail=200 || true
-          done
+      # Health endpoint check
+      ENDPOINT="http://$LB_IP/products"
+      echo "🌐 Checking $ENDPOINT ..."
+      for i in {1..8}; do
+        if curl -fsS "$ENDPOINT"; then
+          echo "✅ Health check passed!"
+          exit 0
         else
-          echo "No pods found to fetch logs from."
+          echo "Attempt $i failed. Retrying..."
+          sleep 5
         fi
+      done
 
-        echo "---- Recent events ----"
-        kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+      echo "❌ Health check failed after retries. Fetching diagnostics..."
+      kubectl get pods -o wide
+      kubectl logs -l app=gke-rest-api --tail=100
+      exit 1
 
-        exit 1
-      fi
-
-      echo "✅ Health check passed: endpoint returned success."
-
-# ------------------------------------------------------------------------------
-# 5️⃣ IMAGES: List images built by this pipeline to be stored in Artifact Registry
-# ------------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# 5️⃣ IMAGES — Artifact Registry image to retain
+# ---------------------------------------------------------------------
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+
