@@ -22,7 +22,9 @@ steps:
     - '-t' # Tag the image
     - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Unique tag using the commit SHA
     - '.'  # Build context: tells Docker to look for the Dockerfile in the current directory
-
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 # ------------------------------------------------------------------------------
 # 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
 # ------------------------------------------------------------------------------
