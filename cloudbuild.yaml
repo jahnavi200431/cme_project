@@ -2,9 +2,7 @@
 # 🌩️ Cloud Build CI/CD Pipeline for GKE REST API Deployment
 # ---------------------------------------------------------------------
 
-options:
-  logging: 'CLOUD_LOGGING_ONLY'
-  timeout: '1200s' # 20 minutes total timeout
+ # 20 minutes total timeout
 
 # ✅ Use the Cloud Build Deployer service account (recommended)
 # Replace below with your Cloud Build Deployer SA if created
