@@ -52,7 +52,7 @@ steps:
       echo "✅ Deployment applied successfully."
 
   # Impersonate deployer SA for secure GKE access
-  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/cloudbuild-deployer@my-project-app-477009.iam.gserviceaccount.com'
+  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
   env:
     - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
     - 'CLOUDSDK_CORE_PROJECT=my-project-app-477009'
