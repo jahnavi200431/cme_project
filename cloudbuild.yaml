@@ -41,13 +41,13 @@ steps:
   args:
     - '-c' # Execute the following as a single bash command
     - |
-      echo "📦 Starting deployment to GKE for project ${PROJECT_ID}..."
+      echo "📦 Starting deployment to GKE for project my-project-app-477009..."
 
       # Configure kubectl to communicate with the GKE cluster
       # This step uses the permissions of the service account configured in the Cloud Build Trigger.
       gcloud container clusters get-credentials product-gke-cluster \
         --zone=us-central1-a \
-        --project=${PROJECT_ID} # Use the project where the cluster resides
+        --project=my-project-app-477009 # Use the project where the cluster resides
 
       echo "🔧 Updating image tag in k8s/deployment.yaml with image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest..."
       # Replace the 'COMMIT_SHA_PLACEHOLDER' in deployment.yaml with the actual, unique image tag
