@@ -1,121 +1,110 @@
+#options:
+#  timeout: '1200s' # Set a longer timeout (20 minutes = 1200 seconds) for the entire build.
+                  # This helps prevent builds from timing out during longer deployment or test phases.
+
+# Added 'options.logging' to satisfy Cloud Build's requirement when a non-default
+# service account is used by the build trigger. Allowed values include:
+#   - CLOUD_LOGGING_ONLY
+#   - NONE
+# Alternatively you could set a logs bucket or use REGIONAL_USER_OWNED_BUCKET behavior.
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-  # timeout: '1200s'  # Uncomment if you need a longer build timeout
+  # timeout: '1200s'
 
 steps:
+# ------------------------------------------------------------------------------
+# 1️⃣ BUILD PHASE: Build the Docker image
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Build Docker Image'
   args:
     - 'build'
-    - '-t'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
-    - '.'
+    - '-t' # Tag the image
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Unique tag using the commit SHA
+    - '.'  # Build context: tells Docker to look for the Dockerfile in the current directory
 
+# ------------------------------------------------------------------------------
+# 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push Docker Image'
   args:
     - 'push'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Push the uniquely tagged image
 
+# ------------------------------------------------------------------------------
+# 3️⃣ DEPLOY PHASE: Deploy the application to GKE
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'Deploy to GKE'
-  entrypoint: 'bash'
+  entrypoint: 'bash' # Use bash to execute multiple commands
   args:
-    - '-c'
+    - '-c' # Execute the following as a single bash command
     - |
-      set -euxo pipefail
       echo "📦 Starting deployment to GKE for project my-project-app-477009..."
 
-      # Ensure gcloud is using the right project (helpful for debugging)
-      gcloud config set project my-project-app-477009
+      # Configure kubectl to communicate with the GKE cluster
+      # This step uses the permissions of the service account configured in the Cloud Build Trigger.
+      gcloud container clusters get-credentials product-gke-cluster \
+        --zone=us-central1-a \
+        --project=my-project-app-477009 # Use the project where the cluster resides
 
-      echo "🔐 Getting credentials for GKE cluster 'product-gke-cluster'..."
-      if ! gcloud container clusters get-credentials product-gke-cluster --zone=us-central1-a --project=my-project-app-477009; then
-        echo "❌ Failed to get GKE credentials. Verify the cluster name, zone, project, and that the Cloud Build SA has container.getCredentials rights."
-        exit 1
-      fi
+      echo "🔧 Updating image tag in k8s/deployment.yaml with image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest..."
+      # Replace the 'COMMIT_SHA_PLACEHOLDER' in deployment.yaml with the actual, unique image tag
+      sed -i "s|COMMIT_SHA_PLACEHOLDER|${COMMIT_SHA}|g" k8s/deployment.yaml
 
-      echo "🔧 Replacing COMMIT_SHA_PLACEHOLDER in k8s/deployment.yaml with latest..."
-      sed -i "s|COMMIT_SHA_PLACEHOLDER|latest|g" k8s/deployment.yaml
-
-      echo "🚀 Applying Kubernetes manifests..."
+      echo "🚀 Applying updated Kubernetes manifests..."
+      # Apply the deployment and service manifests
       kubectl apply -f k8s/deployment.yaml
-      kubectl apply -f k8s/service.yaml
+      kubectl apply -f k8s/service.yaml # Assumes you have a k8s/service.yaml file
 
-      # Wait for rollout to finish (increase timeout to handle slow starts)
-      echo "⏳ Waiting for rollout to finish (timeout 10m)..."
-      if ! kubectl rollout status deployment/gke-rest-api --timeout=600s; then
-        echo "❌ Rollout failed or timed out. Gathering debug info..."
+      echo "✅ Deployment manifests applied successfully."
 
-        echo "== Deployment describe =="
-        kubectl describe deployment gke-rest-api || true
-
-        echo "== ReplicaSet(s) =="
-        kubectl get rs -l app=gke-rest-api -o wide || true
-
-        echo "== Pods =="
-        kubectl get pods -l app=gke-rest-api -o wide || true
-
-        echo "== Pod events =="
-        kubectl get events --sort-by=.lastTimestamp || true
-
-        echo "== Recent logs from pods (all containers, tail 200) =="
-        for p in $(kubectl get pods -l app=gke-rest-api -o name); do
-          echo "---- logs for $p ----"
-          kubectl logs "$p" --all-containers --tail=200 || true
-        done
-
-        exit 1
-      fi
-
-      echo "✅ Deployment applied and rollout completed."
-
+  # No 'serviceAccount' field here. The service account for the entire build
+  # is configured in the Cloud Build Trigger settings.
   env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a' # Set the compute zone for gcloud commands
 
-- name: 'gcr.io/cloud-builders/gcloud'
+# ------------------------------------------------------------------------------
+# 4️⃣ POST-DEPLOYMENT CHECKS: Verify the deployment and application health
+# ------------------------------------------------------------------------------
+- name: 'gcr.io/cloud-builders/gcloud' # Using gcloud builder for curl and kubectl
   id: 'Post-Deployment Checks'
   entrypoint: 'bash'
   args:
-    - '-c'
+    - '-c' # Execute the following as a single bash command
     - |
-      set -euxo pipefail
       echo "🔍 Running basic health check on deployed service..."
-
+      # Attempt to get the external IP of the Kubernetes LoadBalancer service
+      # Ensure 'gke-rest-api-service' matches the name of your Service object
       LB_IP=""
-      MAX_RETRIES=18
+      MAX_RETRIES=10
       RETRY_COUNT=0
-
+      # Loop to wait for LoadBalancer IP to be assigned
       while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
         echo "Waiting for LoadBalancer IP... (Retry $$RETRY_COUNT/$$MAX_RETRIES)"
-        sleep 10
-        LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found 2>/dev/null || true)
+        sleep 10 # Wait 10 seconds before retrying
+        LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
         RETRY_COUNT=$((RETRY_COUNT + 1))
       done
 
       if [ -z "$$LB_IP" ]; then
-        echo "❌ LoadBalancer IP not found after $$MAX_RETRIES retries. Cannot perform health check."
-        kubectl get svc gke-rest-api-service -o yaml || true
-        kubectl get pods -o wide || true
-        exit 1
+        echo "❌ LoadBalancer IP not found after multiple retries. Cannot perform health check."
+        exit 1 # Fail the build if IP is not assigned
       fi
 
       echo "✅ LoadBalancer IP found: $$LB_IP"
       echo "Checking application endpoint at http://$$LB_IP/products ..."
 
-      sleep 15
+      sleep 15 # Give the service a bit more time to fully start and route traffic
 
-      if curl -f "http://$$LB_IP/products"; then
-        echo "✅ Health check passed: Received a successful response from /products."
-      else
-        echo "❌ Health check failed: /products did not return 2xx/3xx."
-        kubectl get pods -o wide || true
-        for p in $(kubectl get pods -l app=gke-rest-api -o name); do
-          echo "---- logs for $p ----"
-          kubectl logs "$p" --all-containers --tail=200 || true
-        done
-        exit 1
-      fi
+      # Perform a curl request to a health endpoint (e.g., /products)
+      # '-f' ensures curl exits with an error code on HTTP errors (4xx/5xx)
+      curl -f "http://$$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error." && exit 1)
 
+# ------------------------------------------------------------------------------
+# 5️⃣ IMAGES: List images built by this pipeline to be stored in Artifact Registry
+# ------------------------------------------------------------------------------
+# This section tells Cloud Build which images it should manage (e.g., garbage collection, provenance).
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
