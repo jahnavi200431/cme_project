@@ -2,6 +2,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gke-rest-api
+  labels:
+    app: gke-rest-api
 spec:
   replicas: 2
   selector:
@@ -14,22 +16,31 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
-          image: us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:latest
+          image: gcr.io/my-project-app-477009/gke-rest-api:latest
+          imagePullPolicy: Always
           ports:
             - containerPort: 8080
-          envFrom:
-            - secretRef:
-                name: db-secret
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-      restartPolicy: Always
+          env:
+            - name: DB_HOST
+              value: "136.115.254.71"
+            - name: DB_NAME
+              value: "productdb"
+            - name: DB_USER
+              value: "postgres"
+            - name: DB_PASS
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-rest-api-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: gke-rest-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080

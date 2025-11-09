@@ -1,12 +1,13 @@
+# gke-rest-api-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
   name: gke-rest-api-service
 spec:
-  type: LoadBalancer
   selector:
-    app: gke-rest-api
+    app: gke-rest-api   # make sure this matches your deployment's label
+  type: LoadBalancer
   ports:
     - protocol: TCP
-      port: 80
-      targetPort: 8080
+      port: 80          # external port
+      targetPort: 8080  # container port
