@@ -1,49 +1,77 @@
-
+# cloudbuild.yaml
 steps:
-# Step 1: Build Docker image
+# ------------------------------------------------------------------------------
+# Build Phase
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['build', '-t', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA', '.']
+  id: 'Build Docker Image'
+  args:
+    - 'build'
+    - '-t'
+    - 'us-central1-docker.pkg.dev//my-artifact-repo/gke-rest-api:latest' # Tag with commit SHA
+    - '.' # Build from current directory
 
-# Step 2: Push to GCR
 - name: 'gcr.io/cloud-builders/docker'
-  args: ['push', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA']
+  id: 'Push Docker Image'
+  args:
+    - 'push'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Push the tagged image
 
-# Step 3: Get GKE credentials
+# ------------------------------------------------------------------------------
+# Deploy Phase
+# ------------------------------------------------------------------------------
+# Use the cloudbuild-deployer service account for GKE deployment
+# This step replaces the image placeholder in k8s/deployment.yaml and applies it
 - name: 'gcr.io/cloud-builders/gcloud'
+  id: 'Deploy to GKE'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      gcloud container clusters get-credentials product-gke-cluster --zone us-central1-a --project my-project-app-477009
+      # Replace the image placeholder with the actual image tag
+      sed -i "s|COMMIT_SHA_PLACEHOLDER|latest|g" k8s/deployment.yaml
 
-# Step 4: Apply deployment & service
-- name: 'gcr.io/cloud-builders/kubectl'
+      # Configure kubectl to use the correct cluster
+      gcloud container clusters get-credentials product-gke-cluster --zone=us-central1 --project=my-project-app-477009
+
+      # Apply the updated deployment manifest to GKE
+      kubectl apply -f k8s/deployment.yaml
+
+  # Specify the dedicated deployer service account for this step
+  # This leverages the impersonation setup you did earlier
+  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/cloudbuild-deployer@my-project-app-477009.iam.gserviceaccount.com'
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1' # Ensure zone is set for gcloud container clusters get-credentials
+
+# ------------------------------------------------------------------------------
+# Post-Deployment Checks (Example - requires a separate container/script for tests)
+# ------------------------------------------------------------------------------
+# This is a placeholder. You would replace this with actual test commands.
+# For example, if you have a Python script for integration tests:
+# - name: 'python' # Or a custom Docker image with your test runner
+#   id: 'Run Integration Tests'
+#   entrypoint: 'python'
+#   args: ['tests/integration_tests.py', '--endpoint=http://your-load-balancer-ip/products']
+#   # This step might also need specific service account permissions if it interacts with other GCP services
+#   # For simplicity, we'll omit a full test step here, but it's crucial for a complete pipeline.
+- name: 'gcr.io/cloud-builders/gcloud'
+  id: 'Post-Deployment Check (Placeholder)'
+  entrypoint: 'bash'
   args:
-    - apply
-    - '-f'
-    - k8s/deployment.yaml
+    - '-c'
+    - |
+      echo "Running simulated post-deployment checks..."
+      # In a real scenario, you'd curl your deployed service's health endpoint
+      # For example: curl -f http://<YOUR_LOAD_BALANCER_IP>/healthz
+      # If the curl fails, exit with a non-zero status to fail the build.
+      sleep 10 # Simulate test duration
+      echo "Simulated checks passed."
 
-- name: 'gcr.io/cloud-builders/kubectl'
-  args:
-    - apply
-    - '-f'
-    - k8s/service.yaml
-
-# Step 5: Update image in deployment
-- name: 'gcr.io/cloud-builders/kubectl'
-  args:
-    - set
-    - image
-    - deployment/gke-rest-api
-    - gke-rest-api=gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA
-
-# Step 6: Wait for rollout
-- name: 'gcr.io/cloud-builders/kubectl'
-  args:
-    - rollout
-    - status
-    - deployment/gke-rest-api
-
+# Define the images that will be built and pushed by this pipeline
 images:
-  - 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA'
+  - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+
+options:
+  # Set a longer timeout for builds, especially if tests are involved
+  timeout: '1200s' # 20 minutes
 
