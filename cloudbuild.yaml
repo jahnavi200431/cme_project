@@ -42,8 +42,31 @@ steps:
       kubectl apply -f k8s/deployment.yaml
       kubectl apply -f k8s/service.yaml
 
-      # Wait for rollout to finish (update deployment name if different)
-      kubectl rollout status deployment/gke-rest-api --timeout=120s || { echo "❌ Rollout failed or timed out"; kubectl describe deployment gke-rest-api || true; kubectl get pods -o wide || true; exit 1; }
+      # Wait for rollout to finish (increase timeout to handle slow starts)
+      echo "⏳ Waiting for rollout to finish (timeout 10m)..."
+      if ! kubectl rollout status deployment/gke-rest-api --timeout=600s; then
+        echo "❌ Rollout failed or timed out. Gathering debug info..."
+
+        echo "== Deployment describe =="
+        kubectl describe deployment gke-rest-api || true
+
+        echo "== ReplicaSet(s) =="
+        kubectl get rs -l app=gke-rest-api -o wide || true
+
+        echo "== Pods =="
+        kubectl get pods -l app=gke-rest-api -o wide || true
+
+        echo "== Pod events =="
+        kubectl get events --sort-by=.lastTimestamp || true
+
+        echo "== Recent logs from pods (all containers, tail 200) =="
+        for p in $(kubectl get pods -l app=gke-rest-api -o name); do
+          echo "---- logs for $p ----"
+          kubectl logs "$p" --all-containers --tail=200 || true
+        done
+
+        exit 1
+      fi
 
       echo "✅ Deployment applied and rollout completed."
 
@@ -60,7 +83,7 @@ steps:
       echo "🔍 Running basic health check on deployed service..."
 
       LB_IP=""
-      MAX_RETRIES=10
+      MAX_RETRIES=18
       RETRY_COUNT=0
 
       while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
@@ -73,6 +96,7 @@ steps:
       if [ -z "$$LB_IP" ]; then
         echo "❌ LoadBalancer IP not found after $$MAX_RETRIES retries. Cannot perform health check."
         kubectl get svc gke-rest-api-service -o yaml || true
+        kubectl get pods -o wide || true
         exit 1
       fi
 
@@ -85,6 +109,11 @@ steps:
         echo "✅ Health check passed: Received a successful response from /products."
       else
         echo "❌ Health check failed: /products did not return 2xx/3xx."
+        kubectl get pods -o wide || true
+        for p in $(kubectl get pods -l app=gke-rest-api -o name); do
+          echo "---- logs for $p ----"
+          kubectl logs "$p" --all-containers --tail=200 || true
+        done
         exit 1
       fi
 
