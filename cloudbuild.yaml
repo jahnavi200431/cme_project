@@ -2,6 +2,15 @@
 #  timeout: '1200s' # Set a longer timeout (20 minutes = 1200 seconds) for the entire build.
                   # This helps prevent builds from timing out during longer deployment or test phases.
 
+# Added 'options.logging' to satisfy Cloud Build's requirement when a non-default
+# service account is used by the build trigger. Allowed values include:
+#   - CLOUD_LOGGING_ONLY
+#   - NONE
+# Alternatively you could set a logs bucket or use REGIONAL_USER_OWNED_BUCKET behavior.
+options:
+  logging: 'CLOUD_LOGGING_ONLY'
+  # timeout: '1200s'
+
 steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE: Build the Docker image
@@ -91,7 +100,7 @@ steps:
 
       # Perform a curl request to a health endpoint (e.g., /products)
       # '-f' ensures curl exits with an error code on HTTP errors (4xx/5xx)
-      curl -f "http://$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error." && exit 1)
+      curl -f "http://$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error."; exit 1)
 
 # ------------------------------------------------------------------------------
 # 5️⃣ IMAGES: List images built by this pipeline to be stored in Artifact Registry
