@@ -81,26 +81,26 @@ steps:
       MAX_RETRIES=10
       RETRY_COUNT=0
       # Loop to wait for LoadBalancer IP to be assigned
-      while [ -z "$LB_IP" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-        echo "Waiting for LoadBalancer IP... (Retry ${RETRY_COUNT}/${MAX_RETRIES})"
+      while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
+        echo "Waiting for LoadBalancer IP... (Retry $$RETRY_COUNT/$$MAX_RETRIES)"
         sleep 10 # Wait 10 seconds before retrying
         LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
         RETRY_COUNT=$((RETRY_COUNT + 1))
       done
 
-      if [ -z "$LB_IP" ]; then
+      if [ -z "$$LB_IP" ]; then
         echo "❌ LoadBalancer IP not found after multiple retries. Cannot perform health check."
         exit 1 # Fail the build if IP is not assigned
       fi
 
-      echo "✅ LoadBalancer IP found: $LB_IP"
-      echo "Checking application endpoint at http://$LB_IP/products ..."
+      echo "✅ LoadBalancer IP found: $$LB_IP"
+      echo "Checking application endpoint at http://$$LB_IP/products ..."
 
       sleep 15 # Give the service a bit more time to fully start and route traffic
 
       # Perform a curl request to a health endpoint (e.g., /products)
       # '-f' ensures curl exits with an error code on HTTP errors (4xx/5xx)
-      curl -f "http://$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error."; exit 1)
+      curl -f "http://$$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error." && exit 1)
 
 # ------------------------------------------------------------------------------
 # 5️⃣ IMAGES: List images built by this pipeline to be stored in Artifact Registry
