@@ -35,7 +35,7 @@ steps:
 # ------------------------------------------------------------------------------
 # 3️⃣ DEPLOY PHASE: Deploy the application to GKE
 # ------------------------------------------------------------------------------
-- name: 'gcr.io/cloud-builders/gcloud'
+- name: 'gcr.io/cloud-builders/gcloud1'
   id: 'Deploy to GKE'
   entrypoint: 'bash' # Use bash to execute multiple commands
   args:
@@ -68,7 +68,7 @@ steps:
 # ------------------------------------------------------------------------------
 # 4️⃣ POST-DEPLOYMENT CHECKS: Verify the deployment and application health
 # ------------------------------------------------------------------------------
-- name: 'gcr.io/cloud-builders/gcloud' # Using gcloud builder for curl and kubectl
+- name: 'gcr.io/cloud-builders/gcloud1' # Using gcloud builder for curl and kubectl
   id: 'Post-Deployment Checks'
   entrypoint: 'bash'
   args:
