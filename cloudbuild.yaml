@@ -8,16 +8,16 @@ steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE: Build the Docker image
 # ------------------------------------------------------------------------------
-- name: 'gcr.io/cloud-builders/docker'
-  id: 'Build Docker Image'
-  args:
-    - 'build'
-    - '-t'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$COMMIT_SHA',
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest',    
-    - '.'
-  env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Build Image'
+    args:
+      [
+        'build', 
+        '-t', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA',
+        '-t', 'gcr.io/my-project-app-477009/gke-rest-api:latest',
+        '.'
+      ]
+
 
 # ------------------------------------------------------------------------------
 # 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
