@@ -44,6 +44,7 @@ steps:
 
       echo "🔧 Updating image tag in k8s/deployment.yaml with image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$latest..."
       sed -i "s|latest|${COMMIT_SHA}|g" k8s/deployment.yaml
+      echo "$latest"
 
       echo "🚀 Applying updated Kubernetes manifests..."
       kubectl apply -f k8s/deployment.yaml
