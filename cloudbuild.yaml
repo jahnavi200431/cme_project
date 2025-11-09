@@ -8,14 +8,14 @@ steps:
   args:
     - 'build'
     - '-t'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:${SHORT_SHA}'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
     - '.'
 
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push Docker Image'
   args:
     - 'push'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:${SHORT_SHA}'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'Deploy to GKE'
@@ -35,8 +35,8 @@ steps:
         exit 1
       fi
 
-      echo "🔧 Replacing COMMIT_SHA_PLACEHOLDER in k8s/deployment.yaml with ${SHORT_SHA}..."
-      sed -i "s|COMMIT_SHA_PLACEHOLDER|${SHORT_SHA}|g" k8s/deployment.yaml
+      echo "🔧 Replacing COMMIT_SHA_PLACEHOLDER in k8s/deployment.yaml with latest..."
+      sed -i "s|COMMIT_SHA_PLACEHOLDER|latest|g" k8s/deployment.yaml
 
       echo "🚀 Applying Kubernetes manifests..."
       kubectl apply -f k8s/deployment.yaml
@@ -89,4 +89,4 @@ steps:
       fi
 
 images:
-  - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:${SHORT_SHA}'
+  - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
