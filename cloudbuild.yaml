@@ -51,7 +51,7 @@ steps:
 
       echo "⏳ Waiting for deployment rollout to finish (timeout: 3m)..."
       # This waits until the deployment's pods are available or times out
-      kubectl rollout status deployment/gke-rest-api --timeout=180s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
+      kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
 
       echo "✅ Deployment manifests applied and rollout complete."
 
