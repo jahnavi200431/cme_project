@@ -1,6 +1,8 @@
 # cloudbuild.yaml
 # Cloud Build pipeline for GKE REST API Deployment
-
+options:
+  
+  timeout: '1200s'
 steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE
@@ -78,7 +80,5 @@ images:
 # ------------------------------------------------------------------------------
 # 5️⃣ OPTIONS
 # ------------------------------------------------------------------------------
-options:
-  logging: CLOUD_LOGGING_ONLY
-  timeout: '1200s'  # 20 minutes
+  # 20 minutes
 
