@@ -1,24 +1,18 @@
 # cloudbuild.yaml
-# 🚀 Cloud Build pipeline for GKE REST API Deployment
-
-# ------------------------------------------------------------------------
-# 🕒 Global Build Options
-# ------------------------------------------------------------------------
+# Cloud Build pipeline for GKE REST API Deployment
 options:
-  logging: CLOUD_LOGGING_ONLY
-  timeout: '1200s'   # 20 minutes
-
-# ------------------------------------------------------------------------
-# 1️⃣ BUILD PHASE
-# ------------------------------------------------------------------------
+  timeout: '1200s'
 steps:
+# ------------------------------------------------------------------------------
+# 1️⃣ BUILD PHASE
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Build Docker Image'
   args:
     - 'build'
     - '-t'
     - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
-    - '.'   # Build context (current directory)
+    - '.'  # Build context (current directory)
 
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push Docker Image'
@@ -26,9 +20,9 @@ steps:
     - 'push'
     - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # 2️⃣ DEPLOY PHASE (to GKE)
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'Deploy to GKE'
   entrypoint: 'bash'
@@ -37,59 +31,48 @@ steps:
     - |
       echo "📦 Starting deployment to GKE..."
 
-      # Authenticate and get cluster credentials
+      # Get GKE credentials (so kubectl can talk to the cluster)
       gcloud container clusters get-credentials product-gke-cluster \
         --zone=us-central1-a \
         --project=my-project-app-477009
 
-      echo "🔧 Updating image in deployment.yaml..."
-      sed -i "s|IMAGE_PLACEHOLDER|us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
+      echo "🔧 Updating image in Kubernetes manifests..."
+      sed -i "s|us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
 
-      echo "🚀 Applying manifests to GKE..."
+      echo "🚀 Applying manifests..."
       kubectl apply -f k8s/deployment.yaml
       kubectl apply -f k8s/service.yaml
 
       echo "✅ Deployment applied successfully."
 
-  # Impersonate deployer SA for secure GKE access
-  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
-  env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-    - 'CLOUDSDK_CORE_PROJECT=my-project-app-477009'
+  # Removed: serviceAccount: 'projects/${PROJECT_ID}/serviceAccounts/cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com'
+  # And any other line related to serviceAccount in steps.
 
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # 3️⃣ POST-DEPLOYMENT CHECKS
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'Post-Deployment Checks'
   entrypoint: 'bash'
   args:
     - '-c'
     - |
-      echo "🔍 Running health check on deployed service..."
-
-      kubectl get pods
-      kubectl get svc gke-rest-api-service
-
-      # Wait for LoadBalancer IP
-      echo "⏳ Waiting for LoadBalancer IP..."
-      sleep 30
-
+      echo "🔍 Running basic health check on deployed service..."
+      # Get the external IP of the LoadBalancer
       LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
 
       if [ -z "$LB_IP" ]; then
-        echo "❌ LoadBalancer IP not found. Check service status manually."
-        kubectl describe svc gke-rest-api-service
+        echo "❌ LoadBalancer IP not found. Skipping health check."
         exit 1
       fi
 
-      echo "🌐 Checking endpoint at http://$LB_IP/products ..."
+      echo "Checking endpoint at http://$LB_IP/products ..."
       sleep 10
-      curl -f "http://$LB_IP/products" && echo "✅ Health check passed!" || (echo "❌ Health check failed!" && exit 1)
+      curl -f "http://$LB_IP/products" && echo "✅ Health check passed." || (echo "❌ Health check failed!" && exit 1)
 
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # 4️⃣ IMAGES TO STORE IN ARTIFACT REGISTRY
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
