@@ -1,36 +1,49 @@
-options:
-  logging: CLOUD_LOGGING_ONLY
 
 steps:
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'build'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$COMMIT_SHA'
-      - '.'
+# Step 1: Build Docker image
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['build', '-t', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA', '.']
 
-  - name: 'gcr.io/cloud-builders/docker'
-    args:
-      - 'push'
-      - 'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$COMMIT_SHA'
+# Step 2: Push to GCR
+- name: 'gcr.io/cloud-builders/docker'
+  args: ['push', 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA']
 
-  - name: 'gcr.io/cloud-builders/gcloud'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gcloud container clusters get-credentials gke-rest-api \
-          --zone us-central1-a \
-          --project my-project-app-477009
+# Step 3: Get GKE credentials
+- name: 'gcr.io/cloud-builders/gcloud'
+  entrypoint: 'bash'
+  args:
+    - '-c'
+    - |
+      gcloud container clusters get-credentials product-gke-cluster --zone us-central1-a --project my-project-app-477009
 
-  - name: 'gcr.io/cloud-builders/kubectl'
-    args:
-      - 'set'
-      - 'image'
-      - 'deployment/gke-rest-api'
-      - 'gke-rest-api=us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$COMMIT_SHA'
+# Step 4: Apply deployment & service
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - apply
+    - '-f'
+    - k8s/deployment.yaml
+
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - apply
+    - '-f'
+    - k8s/service.yaml
+
+# Step 5: Update image in deployment
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - set
+    - image
+    - deployment/gke-rest-api
+    - gke-rest-api=gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA
+
+# Step 6: Wait for rollout
+- name: 'gcr.io/cloud-builders/kubectl'
+  args:
+    - rollout
+    - status
+    - deployment/gke-rest-api
 
 images:
-  - 'us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:$COMMIT_SHA'
+  - 'gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA'
 
-timeout: '1200s'
