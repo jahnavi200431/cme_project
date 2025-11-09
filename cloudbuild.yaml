@@ -13,7 +13,8 @@ steps:
   args:
     - 'build'
     - '-t'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$COMMIT_SHA',
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest',    
     - '.'
   env:
     - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
@@ -25,39 +26,32 @@ steps:
   id: 'Push Docker Image'
   args:
     - 'push'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$COMMIT_SHA'
+- name: 'gcr.io/cloud-builders/docker'
+  id: 'Push Docker Image'
+  args:
+    - 'push'
     - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
-# ------------------------------------------------------------------------------
-# 3️⃣ DEPLOY PHASE: Deploy the application to GKE (apply manifests + wait for rollout)
-# ------------------------------------------------------------------------------
-- name: 'gcr.io/cloud-builders/gcloud'
-  id: 'Deploy to GKE'
-  entrypoint: 'bash'
-  args:
-    - '-c'
-    - |
-      echo "📦 Starting deployment to GKE for project my-project-app-477009..."
+  # STEP 3: Configure access to GKE cluster
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Get GKE Credentials'
+    args:
+      [
+        'container', 'clusters', 'get-credentials',
+        'product-gke-cluster',        # <-- your cluster name
+        '--zone', 'us-central1-a', # <-- your cluster zone/region
+        '--project', 'my-project-app-477009'
+      ]
 
-      gcloud container clusters get-credentials product-gke-cluster \
-        --zone=us-central1-a \
-        --project=my-project-app-477009
-
-      echo "🔧 Updating image tag in k8s/deployment.yaml with image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:$latest..."
-      sed -i "s|latest|${COMMIT_SHA}|g" k8s/deployment.yaml
-      echo "$latest"
-
-      echo "🚀 Applying updated Kubernetes manifests..."
-      kubectl apply -f k8s/deployment.yaml
-      kubectl apply -f k8s/service.yaml
-
-      echo "⏳ Waiting for deployment rollout to finish (timeout: 3m)..."
-      # This waits until the deployment's pods are available or times out
-      kubectl rollout status deployment/gke-rest-api --timeout=180s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
-
-      echo "✅ Deployment manifests applied and rollout complete."
-
-  env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+  # STEP 4: Update image in Kubernetes deployment
+  - name: 'gcr.io/cloud-builders/kubectl'
+    id: 'Deploy to GKE'
+    args:
+      [
+        'set', 'image', 'deployment/my-app-deployment',
+        'my-app-container=gcr.io/my-project-app-477009/gke-rest-api:$COMMIT_SHA'
+      ]
 
 # ------------------------------------------------------------------------------
 # 4️⃣ POST-DEPLOYMENT CHECKS: Verify the deployment and application health (with diagnostics)
