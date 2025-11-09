@@ -45,9 +45,7 @@ steps:
       echo "✅ Deployment applied successfully."
 
   # Use impersonation of Cloud Build Deployer SA
-  env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/cloudbuild-deployer@my-project-app-477009.iam.gserviceaccount.com'
+  
 
 # ------------------------------------------------------------------------------
 # 3️⃣ POST-DEPLOYMENT CHECKS
