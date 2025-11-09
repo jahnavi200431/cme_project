@@ -1,7 +1,6 @@
 # cloudbuild.yaml
 # Cloud Build pipeline for GKE REST API Deployment
-options:
-  timeout: '1200s'
+
 steps:
 # ------------------------------------------------------------------------------
 # 1️⃣ BUILD PHASE
@@ -45,8 +44,10 @@ steps:
 
       echo "✅ Deployment applied successfully."
 
-  # Removed: serviceAccount: 'projects/${PROJECT_ID}/serviceAccounts/cloudbuild-deployer@${PROJECT_ID}.iam.gserviceaccount.com'
-  # And any other line related to serviceAccount in steps.
+  # Use impersonation of Cloud Build Deployer SA
+  env:
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 # ------------------------------------------------------------------------------
 # 3️⃣ POST-DEPLOYMENT CHECKS
@@ -76,4 +77,10 @@ steps:
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
+# ------------------------------------------------------------------------------
+# 5️⃣ OPTIONS
+# ------------------------------------------------------------------------------
+options:
+  logging: CLOUD_LOGGING_ONLY
+  timeout: '1200s'  # 20 minutes
 
