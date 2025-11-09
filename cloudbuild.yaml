@@ -1,94 +1,107 @@
 # cloudbuild.yaml
-# 🚀 Cloud Build pipeline for GKE REST API Deployment
+# Cloud Build pipeline for GKE REST API Deployment
 
-# ------------------------------------------------------------------------
-# 🕒 Global Build Options
-# ------------------------------------------------------------------------
+# Global options for the entire build
+# This block MUST be at the top level, with no indentation.
 options:
-  logging: CLOUD_LOGGING_ONLY
-  timeout: '1200s'   # 20 minutes
+  timeout: '1200s' # Set a longer timeout (20 minutes = 1200 seconds) for the entire build.
+                  # This helps prevent builds from timing out during longer deployment or test phases.
 
-# ------------------------------------------------------------------------
-# 1️⃣ BUILD PHASE
-# ------------------------------------------------------------------------
 steps:
+# ------------------------------------------------------------------------------
+# 1️⃣ BUILD PHASE: Build the Docker image
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Build Docker Image'
   args:
     - 'build'
-    - '-t'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
-    - '.'   # Build context (current directory)
+    - '-t' # Tag the image
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Unique tag using the commit SHA
+    - '.'  # Build context: tells Docker to look for the Dockerfile in the current directory
 
+# ------------------------------------------------------------------------------
+# 2️⃣ PUSH PHASE: Push the Docker image to Artifact Registry
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/docker'
   id: 'Push Docker Image'
   args:
     - 'push'
-    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+    - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest' # Push the uniquely tagged image
 
-# ------------------------------------------------------------------------
-# 2️⃣ DEPLOY PHASE (to GKE)
-# ------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# 3️⃣ DEPLOY PHASE: Deploy the application to GKE
+# ------------------------------------------------------------------------------
 - name: 'gcr.io/cloud-builders/gcloud'
   id: 'Deploy to GKE'
-  entrypoint: 'bash'
+  entrypoint: 'bash' # Use bash to execute multiple commands
   args:
-    - '-c'
+    - '-c' # Execute the following as a single bash command
     - |
-      echo "📦 Starting deployment to GKE..."
+      echo "📦 Starting deployment to GKE for project ${PROJECT_ID}..."
 
-      # Authenticate and get cluster credentials
+      # Configure kubectl to communicate with the GKE cluster
+      # This step uses the permissions of the service account configured in the Cloud Build Trigger.
       gcloud container clusters get-credentials product-gke-cluster \
         --zone=us-central1-a \
-        --project=my-project-app-477009
+        --project=${PROJECT_ID} # Use the project where the cluster resides
 
-      echo "🔧 Updating image in deployment.yaml..."
-      sed -i "s|IMAGE_PLACEHOLDER|us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
+      echo "🔧 Updating image tag in k8s/deployment.yaml with image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest..."
+      # Replace the 'COMMIT_SHA_PLACEHOLDER' in deployment.yaml with the actual, unique image tag
+      sed -i "s|COMMIT_SHA_PLACEHOLDER|${COMMIT_SHA}|g" k8s/deployment.yaml
 
-      echo "🚀 Applying manifests to GKE..."
+      echo "🚀 Applying updated Kubernetes manifests..."
+      # Apply the deployment and service manifests
       kubectl apply -f k8s/deployment.yaml
-      kubectl apply -f k8s/service.yaml
+      kubectl apply -f k8s/service.yaml # Assumes you have a k8s/service.yaml file
 
-      echo "✅ Deployment applied successfully."
+      echo "✅ Deployment manifests applied successfully."
 
-  # Impersonate deployer SA for secure GKE access
-  serviceAccount: 'projects/my-project-app-477009/serviceAccounts/cloudbuild-deployer@my-project-app-477009.iam.gserviceaccount.com'
+  # No 'serviceAccount' field here. The service account for the entire build
+  # is configured in the Cloud Build Trigger settings.
   env:
-    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-    - 'CLOUDSDK_CORE_PROJECT=my-project-app-477009'
+    - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a' # Set the compute zone for gcloud commands
 
-# ------------------------------------------------------------------------
-# 3️⃣ POST-DEPLOYMENT CHECKS
-# ------------------------------------------------------------------------
-- name: 'gcr.io/cloud-builders/gcloud'
+# ------------------------------------------------------------------------------
+# 4️⃣ POST-DEPLOYMENT CHECKS: Verify the deployment and application health
+# ------------------------------------------------------------------------------
+- name: 'gcr.io/cloud-builders/gcloud' # Using gcloud builder for curl and kubectl
   id: 'Post-Deployment Checks'
   entrypoint: 'bash'
   args:
-    - '-c'
+    - '-c' # Execute the following as a single bash command
     - |
-      echo "🔍 Running health check on deployed service..."
-
-      kubectl get pods
-      kubectl get svc gke-rest-api-service
-
-      # Wait for LoadBalancer IP
-      echo "⏳ Waiting for LoadBalancer IP..."
-      sleep 30
-
-      LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+      echo "🔍 Running basic health check on deployed service..."
+      # Attempt to get the external IP of the Kubernetes LoadBalancer service
+      # Ensure 'gke-rest-api-service' matches the name of your Service object
+      LB_IP=""
+      MAX_RETRIES=10
+      RETRY_COUNT=0
+      # Loop to wait for LoadBalancer IP to be assigned
+      while [ -z "$LB_IP" ] && [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        echo "Waiting for LoadBalancer IP... (Retry ${RETRY_COUNT}/${MAX_RETRIES})"
+        sleep 10 # Wait 10 seconds before retrying
+        LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
+        RETRY_COUNT=$((RETRY_COUNT + 1))
+      done
 
       if [ -z "$LB_IP" ]; then
-        echo "❌ LoadBalancer IP not found. Check service status manually."
-        kubectl describe svc gke-rest-api-service
-        exit 1
+        echo "❌ LoadBalancer IP not found after multiple retries. Cannot perform health check."
+        exit 1 # Fail the build if IP is not assigned
       fi
 
-      echo "🌐 Checking endpoint at http://$LB_IP/products ..."
-      sleep 10
-      curl -f "http://$LB_IP/products" && echo "✅ Health check passed!" || (echo "❌ Health check failed!" && exit 1)
+      echo "✅ LoadBalancer IP found: $LB_IP"
+      echo "Checking application endpoint at http://$LB_IP/products ..."
 
-# ------------------------------------------------------------------------
-# 4️⃣ IMAGES TO STORE IN ARTIFACT REGISTRY
-# ------------------------------------------------------------------------
+      sleep 15 # Give the service a bit more time to fully start and route traffic
+
+      # Perform a curl request to a health endpoint (e.g., /products)
+      # '-f' ensures curl exits with an error code on HTTP errors (4xx/5xx)
+      curl -f "http://$LB_IP/products" && echo "✅ Health check passed: Received a successful response from /products." || (echo "❌ Health check failed: Could not reach /products or received an error." && exit 1)
+
+# ------------------------------------------------------------------------------
+# 5️⃣ IMAGES: List images built by this pipeline to be stored in Artifact Registry
+# ------------------------------------------------------------------------------
+# This section tells Cloud Build which images it should manage (e.g., garbage collection, provenance).
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+
