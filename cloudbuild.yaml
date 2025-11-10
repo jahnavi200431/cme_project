@@ -1,17 +1,52 @@
-# Cloud Build pipeline for GKE REST API Deployment (cleaned & consolidated)
+# Cloud Build pipeline for GKE REST API Deployment
 # - Builds a Docker image
 # - Pushes it to Artifact Registry
-# - Deploys to a GKE cluster (updates image in manifest, applies manifests, waits for rollout)
-# - Runs enhanced post-deployment health checks and captures diagnostics on failure
-
+# - Updates the Deployment image (kubectl set image) to ensure the new image is used
+# - Uses a rolling update strategy declared in the Deployment manifest (zero-downtime)
+# - Waits for rollout, runs automated integration tests, and optionally creates a Cloud Monitoring uptime check
+#
+# Notes:
+# - This pipeline contains a guard so it only runs for main/master branch (works with common triggers).
+# - The deployment manifest contains liveness/readiness probes for health checks.
+# - Integration tests are in tests/integration_test.sh and will run against the LoadBalancer IP.
+# - Optionally set the substitution _CREATE_UPTIME_CHECK=true on the trigger to create a Monitoring uptime check.
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
+  timeout: '1200s'  # 20 minutes
 
-# Cloud Build will run steps using this service account
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 steps:
+  # ----------------------------------------------------------------------------
+  # 0) Guard: Only proceed when this build is for main or master branch
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Verify Branch'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔎 Verifying branch / trigger context..."
+
+        BR=""
+        if [ -n "$BRANCH_NAME" ]; then
+          BR="$BRANCH_NAME"
+        fi
+
+        if [ -z "$BR" ] && [ -n "$BRANCH_REF" ]; then
+          BR=$(basename "$BRANCH_REF")
+        fi
+
+        if [ -z "$BR" ]; then
+          echo "Branch not detected (BRANCH_NAME/BRANCH_REF not set). Proceeding with the build."
+        else
+          echo "Build triggered for branch: $BR"
+          if ! echo "$BR" | egrep -q '^(main|master)$'; then
+            echo "This pipeline only runs for the main or master branch. Skipping build steps."
+            exit 0
+          fi
+        fi
+
   # ----------------------------------------------------------------------------
   # 1) Build the Docker image
   # ----------------------------------------------------------------------------
@@ -35,7 +70,7 @@ steps:
       - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
   # ----------------------------------------------------------------------------
-  # 3) Deploy to GKE: update manifest image, apply manifests, wait for rollout
+  # 3) Deploy to GKE: set image on the Deployment (safe) and wait for rolling update
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Deploy to GKE'
@@ -43,55 +78,47 @@ steps:
     args:
       - '-c'
       - |
-        echo "📦 Starting deployment to GKE for project my-project-app-477009..."
+        set -euo pipefail
+        IMAGE="us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest"
 
-        # Authenticate kubectl to the cluster
+        echo "📦 Starting deployment to GKE for project my-project-app-477009..."
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
 
-        echo "🔧 Updating image reference in k8s/deployment.yaml..."
-        # Replace the image: line in the deployment manifest with the artifact registry image.
-        # This matches the "image:" key and replaces the value. Keep a backup with .bak for easier debugging.
-        sed -i.bak "s|\(image:[[:space:]]*\).*|\1us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
+        echo "🔧 Updating Deployment image using kubectl set image -> ${IMAGE}"
+        kubectl -n default set image deployment/gke-rest-api gke-rest-api="${IMAGE}" --record
 
-        echo "🚀 Applying Kubernetes manifests..."
-        kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml
+        echo "🚀 Waiting for rolling update to complete (timeout: 180s)..."
+        kubectl rollout status deployment/gke-rest-api --timeout=180s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && kubectl describe deployment gke-rest-api && exit 1)
 
-        echo "⏳ Waiting for deployment rollout to finish (timeout: 80s)..."
-        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
-
-        echo "✅ Deployment applied and rollout complete."
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+        echo "✅ Deployment update complete."
 
   # ----------------------------------------------------------------------------
-  # 4) Post-deployment checks: wait for LoadBalancer IP, curl health endpoint with retries,
-  #    and gather diagnostics on failure
+  # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Post-Deployment Checks'
+    id: 'Post-Deployment Checks & Integration Tests'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "🔍 Running enhanced health checks..."
+        set -euo pipefail
+        echo "🔍 Running post-deployment checks and integration tests..."
 
+        # wait for LoadBalancer IP
         LB_IP=""
         MAX_RETRIES=12
-        RETRY_COUNT=0
-
-        # Wait for LoadBalancer IP (use escaped $$ to avoid Cloud Build substitution)
-        while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP... (Retry $$RETRY_COUNT/$$MAX_RETRIES)"
+        RETRY=0
+        while [ -z "$LB_IP" ] && [ $RETRY -lt $MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $RETRY/$MAX_RETRIES)"
           sleep 10
-          LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
-          RETRY_COUNT=$((RETRY_COUNT + 1))
+          LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$((RETRY+1))
         done
 
-        if [ -z "$$LB_IP" ]; then
-          echo "❌ LoadBalancer IP not found after $$MAX_RETRIES retries. Gathering diagnostics..."
+        if [ -z "$LB_IP" ]; then
+          echo "❌ LoadBalancer IP not found. Gathering diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
@@ -100,59 +127,52 @@ steps:
           exit 1
         fi
 
-        echo "✅ LoadBalancer IP found: $$LB_IP"
+        echo "✅ LoadBalancer IP: $LB_IP"
 
-        # Get service/target ports
-        SVC_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].port}')
-        TARGET_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].targetPort}')
-        echo "Service port: $$SVC_PORT  TargetPort: $$TARGET_PORT"
-
-        # Health-check the app endpoint with retries and diagnostic collection on failure
-        HEALTH_PATH="/products"
-        SUCCESS=0
-        ATTEMPTS=8
-
-        for i in $(seq 1 $$ATTEMPTS); do
-          echo "Attempt $$i/$$ATTEMPTS: curling http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH ..."
-          curl --max-time 6 --retry 5 --retry-connrefused --retry-delay 2 -f "http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH" && SUCCESS=1 && break || echo "Attempt $$i failed, will retry..."
+        # simple endpoint smoke check before running integration tests
+        echo "⏳ Performing simple /products endpoint health check..."
+        for i in $(seq 1 8); do
+          http_status=$(curl -s -o /dev/null -w "%{http_code}" "http://$LB_IP:80/products" || echo "000")
+          echo "Attempt $i: HTTP $http_status"
+          if [ "$http_status" = "200" ]; then
+            echo "✅ /products returned 200"
+            break
+          fi
           sleep 5
         done
 
-        if [ $$SUCCESS -ne 1 ]; then
-          echo "❌ Health check failed after $$ATTEMPTS attempts. Gathering diagnostics..."
-
-          echo "---- Pods ----"
+        if [ "$http_status" != "200" ]; then
+          echo "❌ /products endpoint did not return 200 after retries. Gathering diagnostics..."
           kubectl get pods -l app=gke-rest-api -o wide || true
-
-          echo "---- Describe Deployment ----"
           kubectl describe deployment gke-rest-api || true
-
-          echo "---- Describe Service ----"
           kubectl describe svc gke-rest-api-service || true
-
-          echo "---- Recent Pod Logs (tail=200) ----"
-          PODS=$(kubectl get pods -l app=gke-rest-api -o name || true)
-          if [ -n "$$PODS" ]; then
-            for p in $$PODS; do
-              echo "---- Logs for $$p ----"
-              kubectl logs $$p --tail=200 || true
-            done
-          else
-            echo "No pods found to fetch logs from."
-          fi
-
-          echo "---- Recent events ----"
           kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
-
           exit 1
         fi
 
-        echo "✅ Health check passed: endpoint returned success."
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+        # Run integration test script from the repo (script returns non-zero on failure)
+        echo "🧪 Running integration tests script tests/integration_test.sh"
+        chmod +x tests/integration_test.sh || true
+        LB="$LB_IP" bash tests/integration_test.sh
 
-# ----------------------------------------------------------------------------
-# Images built by this pipeline to be stored in Artifact Registry
-# ----------------------------------------------------------------------------
+        echo "✅ Integration tests passed."
+
+        # Optionally create a Cloud Monitoring uptime check (only if trigger sets substitution _CREATE_UPTIME_CHECK=true)
+        if [ "${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
+          echo "🔔 Creating/updating Cloud Monitoring uptime check for /products (requires proper IAM)"
+          # This uses the alpha gcloud command; adjust as needed and ensure Cloud Monitoring API is enabled
+          gcloud alpha monitoring uptime-checks create http \
+            --project=my-project-app-477009 \
+            --display-name="gke-rest-api-products" \
+            --host="$LB_IP" \
+            --path="/products" \
+            --port=80 \
+            --http-check-response-code=200 \
+            --timeout=10s \
+            --period=300s || echo "⚠️ Could not create uptime check (insufficient permissions or alpha APIs not enabled)."
+        else
+          echo "Monitoring creation skipped (set _CREATE_UPTIME_CHECK=true to enable)."
+        fi
+
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
