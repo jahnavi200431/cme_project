@@ -1,8 +1,8 @@
 
-
 {
   "displayName": "Uptime Check Failure Alert",
   "enabled": true,
+  "combiner": "OR",
   "conditions": [
     {
       "displayName": "Uptime Check Failed",
