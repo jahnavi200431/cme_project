@@ -1,7 +1,7 @@
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
+    
 
 # Cloud Build will run steps using this service account
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
