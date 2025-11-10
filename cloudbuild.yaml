@@ -1,7 +1,8 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-   # 20 minutes
+    # 20 minutes
 
+# Cloud Build will run steps using this service account
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 steps:
@@ -36,7 +37,6 @@ steps:
     args:
       - '-c'
       - |
-        set -euo pipefail
         echo "📦 Starting deployment to GKE for project my-project-app-477009..."
 
         # Authenticate kubectl to the cluster
@@ -46,22 +46,22 @@ steps:
 
         echo "🔧 Updating image reference in k8s/deployment.yaml..."
         # Replace the image: line in the deployment manifest with the artifact registry image.
+        # This matches the "image:" key and replaces the value. Keep a backup with .bak for easier debugging.
         sed -i.bak "s|\(image:[[:space:]]*\).*|\1us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
 
         echo "🚀 Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yaml
-        kubectl apply -f k8s/service.yaml || true
-        kubectl apply -f k8s/ingress.yaml || true
+        kubectl apply -f k8s/service.yaml
 
-        echo "⏳ Waiting for deployment rollout to finish (timeout: 180s)..."
-        kubectl rollout status deployment/gke-rest-api --timeout=180s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
+        echo "⏳ Waiting for deployment rollout to finish (timeout: 80s)..."
+        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
 
         echo "✅ Deployment applied and rollout complete."
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
   # ----------------------------------------------------------------------------
-   # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
+  # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Post-Deployment Checks & Integration Tests'
@@ -122,57 +122,24 @@ steps:
         LB="$$LB_IP" bash tests/integration_test.sh
 
         echo "✅ Integration tests passed."
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
-  # ----------------------------------------------------------------------------
-  # 5) Create / Update synthetic uptime checks for key API endpoints (optional)
-  #    Controlled by substitution _CREATE_UPTIME_CHECK (set to "true" in trigger or gcloud submit)
-  # ----------------------------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Create Synthetic Uptime Checks'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        set -euo pipefail
-
-        if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
-          echo "Skipping synthetic uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
-          exit 0
+        # Optionally create a Cloud Monitoring uptime check (only if trigger sets substitution _CREATE_UPTIME_CHECK=true)
+        if [ "$${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
+          echo "🔔 Creating/updating Cloud Monitoring uptime check for /products (requires proper IAM)"
+          # This uses the alpha gcloud command; adjust as needed and ensure Cloud Monitoring API is enabled
+          gcloud alpha monitoring uptime-checks create http \
+            --project=my-project-app-477009 \
+            --display-name="gke-rest-api-products" \
+            --host="$$LB_IP" \
+            --path="/products" \
+            --port=80 \
+            --http-check-response-code=200 \
+            --timeout=10s \
+            --period=300s || echo "⚠️ Could not create uptime check (insufficient permissions or alpha APIs not enabled)."
+        else
+          echo "Monitoring creation skipped (set _CREATE_UPTIME_CHECK=true to enable)."
         fi
-
-        echo "🔔 Creating/updating synthetic uptime checks for key endpoints..."
-
-        # Resolve LB IP / Ingress address (prefer substitution then cluster resources)
-        LB_IP="${_LB_IP:-}"
-        if [ -z "$LB_IP" ]; then
-          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-        fi
-        if [ -z "$LB_IP" ]; then
-          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-        fi
-        if [ -z "$LB_IP" ]; then
-          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
-        fi
-
-        if [ -z "$LB_IP" ]; then
-          echo "LB IP / Ingress address not found; skipping synthetic checks creation."
-          exit 0
-        fi
-
-        echo "Resolved host for synthetic checks: $LB_IP"
-
-        # Ensure the monitoring script is available & executable
-        chmod +x monitoring/create_uptime_checks.sh || true
-
-        # Create checks for the key endpoints: /products, /health, /metrics
-        ./monitoring/create_uptime_checks.sh \
-          --project=my-project-app-477009 \
-          --host="$LB_IP" \
-          --paths="/products,/health,/metrics" \
-          --name-prefix="gke-rest-api" \
-          --notification-channel="${_NOTIF_CHANNEL_ID:-}"
+        echo "✅ Health check passed: endpoint returned success."
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
