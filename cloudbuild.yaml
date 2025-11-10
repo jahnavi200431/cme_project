@@ -61,7 +61,7 @@ steps:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
   # ----------------------------------------------------------------------------
-  # 4) Post-deployment checks: ensure LB/Ingress address, run health checks and integration tests
+   # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Post-Deployment Checks & Integration Tests'
@@ -72,44 +72,33 @@ steps:
         set -euo pipefail
         echo "🔍 Running post-deployment checks and integration tests..."
 
-        # Try to resolve LoadBalancer IP or Ingress address (use $$ to avoid Cloud Build substitution here)
+        # wait for LoadBalancer IP
         LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
         while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP / Ingress address... (retry $$RETRY/$$MAX_RETRIES)"
-          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-          if [ -z "$$LB_IP" ]; then
-            LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-          fi
-          if [ -z "$$LB_IP" ]; then
-            LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
-          fi
-          if [ -n "$$LB_IP" ]; then
-            break
-          fi
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
           RETRY=$$((RETRY+1))
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo "❌ LoadBalancer IP / Ingress address not found. Gathering diagnostics..."
+          echo "❌ LoadBalancer IP not found. Gathering diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
-          kubectl get ingress product-api-ingress -o yaml || true
-          kubectl describe ingress product-api-ingress || true
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
           kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
 
-        echo "✅ LoadBalancer / Ingress address: $$LB_IP"
+        echo "✅ LoadBalancer IP: $$LB_IP"
 
         # simple endpoint smoke check before running integration tests
         echo "⏳ Performing simple /products endpoint health check..."
         for i in $$(seq 1 8); do
-          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP:80/products" || echo "000")
           echo "Attempt $$i: HTTP $$http_status"
           if [ "$$http_status" = "200" ]; then
             echo "✅ /products returned 200"
@@ -193,8 +182,3 @@ steps:
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
-substitutions:
-  # Example substitutions to set in triggers or gcloud builds submit:
-  # _CREATE_UPTIME_CHECK=true
-  # _NOTIF_CHANNEL_ID=projects/my-project-app-477009/notificationChannels/12064618237516244045
-  # _LB_IP=34.133.250.137  (optional override)
