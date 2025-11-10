@@ -5,7 +5,7 @@
     {
       "displayName": "Uptime Check Failure",
       "conditionThreshold": {
-        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"gke-rest-api-9EIPgCWoV6w\"",
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"gke-rest-api-uptime\"",
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "60s"
