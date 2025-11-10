@@ -1,8 +1,4 @@
-d)
-# - Builds a Docker image
-# - Pushes it to Artifact Registry
-# - Deploys to a GKE cluster (updates image in manifest, applies manifests, waits for rollout)
-# - Runs enhanced post-deployment health checks and captures diagnostics on failure
+
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
