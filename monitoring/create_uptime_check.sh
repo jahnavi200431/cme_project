@@ -29,7 +29,7 @@ Options:
 
 Examples:
   $0 --lb-ip=34.133.250.137
-  $0 --project=my-project --lb-ip=34.133.250.137 --notification-channel="projects/my-project/notificationChannels/12345"
+  $0 --project=my-project --lb-ip=34.133.250.137 --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
 EOF
 }
 
