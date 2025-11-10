@@ -56,8 +56,7 @@ get_body() { cat "$TMPDIR/body"; }
 extract_id() {
   local body
   body="$(get_body)"
-  local id
-
+  local id=""
   if command -v jq >/dev/null 2>&1; then
     id=$(echo "$body" | jq -r '.id // empty' 2>/dev/null || true)
   fi
@@ -70,7 +69,8 @@ extract_id() {
     fi
   fi
 
-  echo "$id"
+  # Ensure we return empty string rather than causing unbound variable later
+  echo "${id:-}"
 }
 
 # 1) GET /products
@@ -109,15 +109,12 @@ fi
 
 product_id=$(extract_id)
 if [ -z "$product_id" ]; then
-  # try Location header (if server returned it)
-  headers=$(curl -s -i -H "Content-Type: application/json" -X POST "$BASE_URL/products" -d "$payload" || true)
-  # look for Location: .../products/{id}
-  product_id=$(echo "$headers" | grep -i -oE 'Location: .*' | sed -E 's|.*/products/([^/[:space:]]+).*|\1|' | tr -d '\r' || true)
+  echo "WARN: Could not extract id from POST body. Response body:"
+  echo "$post_body"
 fi
 
 if [ -z "$product_id" ]; then
-  echo "FAIL: Could not extract created product id from response. Body:"
-  echo "$post_body"
+  echo "FAIL: Could not extract created product id from response."
   exit 1
 fi
 
