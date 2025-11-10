@@ -168,10 +168,10 @@ steps:
         # Create checks for the key endpoints: /products, /health, /metrics
         ./monitoring/create_uptime_check.sh \
           --project=my-project-app-477009 \
-          --host="$LB_IP" \
+          --host="34.133.250.137" \
           --paths="/products,/health,/metrics" \
           --name-prefix="gke-rest-api" \
-          --notification-channel="${_NOTIF_CHANNEL_ID:-}"
+          --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 # ----------------------------------------------------------------------------
