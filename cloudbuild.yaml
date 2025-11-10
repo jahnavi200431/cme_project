@@ -136,7 +136,7 @@ steps:
       - |
         set -euo pipefail
         # default behavior: run if substitution _CREATE_UPTIME_CHECK is true (set it in your trigger)
-        if [ "${_CREATE_UPTIME_CHECK:-true}" != "true" ]; then
+        if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
           echo "Skipping uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
           exit 0
         fi
