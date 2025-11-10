@@ -1,4 +1,3 @@
-
 {
   "displayName": "Uptime Check Failure Alert",
   "enabled": true,
@@ -11,5 +10,10 @@
       }
     }
   ],
-  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/5593852693922427350"]
+  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/17195648222355338109"],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  }
 }
