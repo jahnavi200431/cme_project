@@ -198,4 +198,4 @@ if [ "$post_del_status" = "200" ]; then
 fi
 echo "OK: DELETE verified (GET returned HTTP $post_del_status)"
 
-echo "All integration tests passed."
+echo "All integration checks passed."
