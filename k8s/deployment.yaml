@@ -14,9 +14,13 @@ spec:
       labels:
         app: gke-rest-api
     spec:
+      # If using a docker registry secret, uncomment the line below and create the secret
+      # imagePullSecrets:
+      # - name: regcred
       containers:
         - name: gke-rest-api
-          image: gcr.io/my-project-app-477009/gke-rest-api:latest
+          # Replace this with a working image URL (Artifact Registry path or public registry)
+          image: us-central1-docker.pkg.dev/my-project-app-477009/product-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080

@@ -1,12 +1,3 @@
-# Cloud Build pipeline for GKE REST API Deployment (cleaned & consolidated)
-# - Builds a Docker image
-# - Pushes it to Artifact Registry
-# - Deploys to a GKE cluster (updates image in manifest, applies manifests, waits for rollout)
-# - Runs enhanced post-deployment health checks and captures diagnostics on failure
-#
-# NOTE: This file now includes a guard step that will exit early (success) unless the
-# build was triggered for the "main" or "master" branch. Use a GitHub/CSR trigger
-# that sets BRANCH_NAME or BRANCH_REF for this guard to work.
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
