@@ -1,13 +1,12 @@
-# gke-rest-api-service.yaml
 apiVersion: v1
-kind: Service
+kind: Secret
 metadata:
-  name: gke-rest-api-service
-spec:
-  selector:
-    app: gke-rest-api   # make sure this matches your deployment's label
-  type: LoadBalancer
-  ports:
-    - protocol: TCP
-      port: 80          # external port
-      targetPort: 8080  # container port
+  name: db-credentials
+  namespace: default
+type: Opaque
+data:
+  DB_HOST: "MTM2LjExNS4yNTQuNzE="    # base64 of 136.115.254.71
+  DB_NAME: "cHJvZHVjdGRi"           # base64 of productdb
+  DB_USER: "cG9zdGdyZXM="           # base64 of postgres
+  DB_PASS: "cG9zdGdyZXM="           # base64 of postgres
+  DB_PORT: "NTQzMg=="               # base64 of 5432
