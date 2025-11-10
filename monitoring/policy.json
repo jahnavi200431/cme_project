@@ -8,7 +8,7 @@
     {
       "displayName": "API Uptime Failure",
       "conditionThreshold": {
-        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"gke-rest-api-products-9EIPgCWoV6w\"",
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"gke-rest-api-uptime\"",
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "60s",
