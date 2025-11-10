@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-LB="${LB:-}"
+LB="34.133.250.137"
 if [ -z "$LB" ]; then
   echo "ERROR: LB environment variable not set. Provide the LoadBalancer IP via LB."
   exit 2
