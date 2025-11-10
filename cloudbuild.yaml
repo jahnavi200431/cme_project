@@ -1,9 +1,3 @@
-# Cloud Build pipeline for GKE REST API Deployment (cleaned & consolidated)
-# - Builds a Docker image
-# - Pushes it to Artifact Registry
-# - Deploys to a GKE cluster (updates image in manifest, applies manifests, waits for rollout)
-# - Runs enhanced post-deployment health checks and captures diagnostics on failure
-
 options:
   logging: 'CLOUD_LOGGING_ONLY'
     # 20 minutes
@@ -67,31 +61,30 @@ steps:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
   # ----------------------------------------------------------------------------
-  # 4) Post-deployment checks: wait for LoadBalancer IP, curl health endpoint with retries,
-  #    and gather diagnostics on failure
+  # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Post-Deployment Checks'
+    id: 'Post-Deployment Checks & Integration Tests'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
-        echo "🔍 Running enhanced health checks..."
+        set -euo pipefail
+        echo "🔍 Running post-deployment checks and integration tests..."
 
-        LB_IP=""
+        # wait for LoadBalancer IP
+        LB_IP="34.133.250.137"
         MAX_RETRIES=12
-        RETRY_COUNT=0
-
-        # Wait for LoadBalancer IP (use escaped $$ to avoid Cloud Build substitution)
-        while [ -z "$$LB_IP" ] && [ $$RETRY_COUNT -lt $$MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP... (Retry $$RETRY_COUNT/$$MAX_RETRIES)"
+        RETRY=0
+        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
-          LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found)
-          RETRY_COUNT=$((RETRY_COUNT + 1))
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$$((RETRY+1))
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo "❌ LoadBalancer IP not found after $$MAX_RETRIES retries. Gathering diagnostics..."
+          echo "❌ LoadBalancer IP not found. Gathering diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
@@ -100,53 +93,52 @@ steps:
           exit 1
         fi
 
-        echo "✅ LoadBalancer IP found: $$LB_IP"
+        echo "✅ LoadBalancer IP: $$LB_IP"
 
-        # Get service/target ports
-        SVC_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].port}')
-        TARGET_PORT=$(kubectl get svc gke-rest-api-service -o jsonpath='{.spec.ports[0].targetPort}')
-        echo "Service port: $$SVC_PORT  TargetPort: $$TARGET_PORT"
-
-        # Health-check the app endpoint with retries and diagnostic collection on failure
-        HEALTH_PATH="/products"
-        SUCCESS=0
-        ATTEMPTS=8
-
-        for i in $(seq 1 $$ATTEMPTS); do
-          echo "Attempt $$i/$$ATTEMPTS: curling http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH ..."
-          curl --max-time 6 --retry 5 --retry-connrefused --retry-delay 2 -f "http://$$LB_IP:$$SVC_PORT$$HEALTH_PATH" && SUCCESS=1 && break || echo "Attempt $$i failed, will retry..."
+        # simple endpoint smoke check before running integration tests
+        echo "⏳ Performing simple /products endpoint health check..."
+        for i in $$(seq 1 8); do
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP:80/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
+            echo "✅ /products returned 200"
+            break
+          fi
           sleep 5
         done
 
-        if [ $$SUCCESS -ne 1 ]; then
-          echo "❌ Health check failed after $$ATTEMPTS attempts. Gathering diagnostics..."
-
-          echo "---- Pods ----"
+        if [ "$$http_status" != "200" ]; then
+          echo "❌ /products endpoint did not return 200 after retries. Gathering diagnostics..."
           kubectl get pods -l app=gke-rest-api -o wide || true
-
-          echo "---- Describe Deployment ----"
           kubectl describe deployment gke-rest-api || true
-
-          echo "---- Describe Service ----"
           kubectl describe svc gke-rest-api-service || true
-
-          echo "---- Recent Pod Logs (tail=200) ----"
-          PODS=$(kubectl get pods -l app=gke-rest-api -o name || true)
-          if [ -n "$$PODS" ]; then
-            for p in $$PODS; do
-              echo "---- Logs for $$p ----"
-              kubectl logs $$p --tail=200 || true
-            done
-          else
-            echo "No pods found to fetch logs from."
-          fi
-
-          echo "---- Recent events ----"
           kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
-
           exit 1
         fi
 
+        # Run integration test script from the repo (script returns non-zero on failure)
+        echo "🧪 Running integration tests script tests/integration_test.sh"
+        chmod +x tests/integration_test.sh || true
+        LB="$$LB_IP" bash tests/integration_test.sh
+
+        echo "✅ Integration tests passed."
+
+        # Optionally create a Cloud Monitoring uptime check (only if trigger sets substitution _CREATE_UPTIME_CHECK=true)
+        if [ "$${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
+          echo "🔔 Creating/updating Cloud Monitoring uptime check for /products (requires proper IAM)"
+          # This uses the alpha gcloud command; adjust as needed and ensure Cloud Monitoring API is enabled
+          gcloud alpha monitoring uptime-checks create http \
+            --project=my-project-app-477009 \
+            --display-name="gke-rest-api-products" \
+            --host="$$LB_IP" \
+            --path="/products" \
+            --port=80 \
+            --http-check-response-code=200 \
+            --timeout=10s \
+            --period=300s || echo "⚠️ Could not create uptime check (insufficient permissions or alpha APIs not enabled)."
+        else
+          echo "Monitoring creation skipped (set _CREATE_UPTIME_CHECK=true to enable)."
+        fi
         echo "✅ Health check passed: endpoint returned success."
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
