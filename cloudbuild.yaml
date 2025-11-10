@@ -125,41 +125,55 @@ steps:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
   # ----------------------------------------------------------------------------
-  # 5) Create / Update Cloud Monitoring uptime check (optional)
+ # 5) Create / Update synthetic uptime checks for key API endpoints (optional)
   #    Controlled by substitution _CREATE_UPTIME_CHECK (set to "true" in trigger or gcloud submit)
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Create Uptime Check'
+    id: 'Create Synthetic Uptime Checks'
     entrypoint: 'bash'
     args:
       - '-c'
       - |
         set -euo pipefail
-        # default behavior: run if substitution _CREATE_UPTIME_CHECK is true (set it in your trigger)
+
         if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
-          echo "Skipping uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
+          echo "Skipping synthetic uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
           exit 0
         fi
 
-        echo "🔔 Creating/updating uptime check using monitoring/create_uptime_check.sh..."
+        echo "🔔 Creating/updating synthetic uptime checks for key endpoints..."
 
-        # Resolve LB IP (use $$ to prevent Cloud Build expanding)
-        LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-        if [ -z "$$LB_IP" ]; then
-          echo "LB IP not found; skipping uptime-check creation"
+        # Resolve LB IP / Ingress address (prefer substitution then cluster resources)
+        LB_IP="${_LB_IP:-}"
+        if [ -z "$LB_IP" ]; then
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+        if [ -z "$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+        if [ -z "$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$LB_IP" ]; then
+          echo "LB IP / Ingress address not found; skipping synthetic checks creation."
           exit 0
         fi
 
-        # Ensure script is executable and run it with provided notification channel
+        echo "Resolved host for synthetic checks: $LB_IP"
+
+        # Ensure the monitoring script is available & executable
         chmod +x monitoring/create_uptime_check.sh || true
 
+        # Create checks for the key endpoints: /products, /health, /metrics
         ./monitoring/create_uptime_check.sh \
           --project=my-project-app-477009 \
-          --lb-ip="$$LB_IP" \
-          --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
+          --host="$LB_IP" \
+          --paths="/products,/health,/metrics" \
+          --name-prefix="gke-rest-api" \
+          --notification-channel="${_NOTIF_CHANNEL_ID:-}"
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-
 # ----------------------------------------------------------------------------
 # Images built by this pipeline to be stored in Artifact Registry
 # ----------------------------------------------------------------------------
