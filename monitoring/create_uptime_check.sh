@@ -13,9 +13,9 @@
 set -euo pipefail
 
 PROJECT="my-project-app-477009"
-LB_IP=""
+LB_IP="34.133.250.137"
 CHECK_NAME="gke-rest-api-products"
-NOTIF_CHANNEL_ID=""
+NOTIF_CHANNEL_ID="projects/my-project-app-477009/notificationChannels/12064618237516244045"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
