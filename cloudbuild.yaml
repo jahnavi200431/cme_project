@@ -12,7 +12,7 @@
 # - Optionally set the substitution _CREATE_UPTIME_CHECK=true on the trigger to create a Monitoring uptime check.
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
+  timeout: '1200s'  # 20 minutes
 
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
