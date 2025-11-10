@@ -1,18 +1,15 @@
 
+
 {
-  "displayName": "Uptime Check Alert",
+  "displayName": "Uptime Check Failure Alert",
+  "enabled": true,
   "conditions": [
     {
-      "displayName": "Uptime Check Failure",
-      "conditionThreshold": {
-        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND metric.label.check_id=\"gke-rest-api-uptime\"",
-        "comparison": "COMPARISON_LT",
-        "thresholdValue": 1,
-        "duration": "60s"
+      "displayName": "Uptime Check Failed",
+      "conditionMatchedLog": {
+        "filter": "severity=\"ERROR\""
       }
     }
   ],
-  "combiner": "AND",
-  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/12064618237516244045"],
-  "enabled": true
+  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/12064618237516244045"]
 }
