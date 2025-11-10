@@ -1,5 +1,3 @@
-
-
 options:
   logging: 'CLOUD_LOGGING_ONLY'
     # 20 minutes
@@ -75,17 +73,17 @@ steps:
         echo "🔍 Running post-deployment checks and integration tests..."
 
         # wait for LoadBalancer IP
-        LB_IP=""
+        LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
-        while [ -z "$LB_IP" ] && [ $RETRY -lt $MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP... (retry $RETRY/$MAX_RETRIES)"
+        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
-          LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-          RETRY=$((RETRY+1))
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$$((RETRY+1))
         done
 
-        if [ -z "$LB_IP" ]; then
+        if [ -z "$$LB_IP" ]; then
           echo "❌ LoadBalancer IP not found. Gathering diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
@@ -95,21 +93,21 @@ steps:
           exit 1
         fi
 
-        echo "✅ LoadBalancer IP: $LB_IP"
+        echo "✅ LoadBalancer IP: $$LB_IP"
 
         # simple endpoint smoke check before running integration tests
         echo "⏳ Performing simple /products endpoint health check..."
-        for i in $(seq 1 8); do
-          http_status=$(curl -s -o /dev/null -w "%{http_code}" "http://$LB_IP:80/products" || echo "000")
-          echo "Attempt $i: HTTP $http_status"
-          if [ "$http_status" = "200" ]; then
+        for i in $$(seq 1 8); do
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP:80/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
             echo "✅ /products returned 200"
             break
           fi
           sleep 5
         done
 
-        if [ "$http_status" != "200" ]; then
+        if [ "$$http_status" != "200" ]; then
           echo "❌ /products endpoint did not return 200 after retries. Gathering diagnostics..."
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
@@ -121,18 +119,18 @@ steps:
         # Run integration test script from the repo (script returns non-zero on failure)
         echo "🧪 Running integration tests script tests/integration_test.sh"
         chmod +x tests/integration_test.sh || true
-        LB="$LB_IP" bash tests/integration_test.sh
+        LB="$$LB_IP" bash tests/integration_test.sh
 
         echo "✅ Integration tests passed."
 
         # Optionally create a Cloud Monitoring uptime check (only if trigger sets substitution _CREATE_UPTIME_CHECK=true)
-        if [ "${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
+        if [ "$${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
           echo "🔔 Creating/updating Cloud Monitoring uptime check for /products (requires proper IAM)"
           # This uses the alpha gcloud command; adjust as needed and ensure Cloud Monitoring API is enabled
           gcloud alpha monitoring uptime-checks create http \
             --project=my-project-app-477009 \
             --display-name="gke-rest-api-products" \
-            --host="$LB_IP" \
+            --host="$$LB_IP" \
             --path="/products" \
             --port=80 \
             --http-check-response-code=200 \
