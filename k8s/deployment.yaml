@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
-          image: gcr.io/my-project-app-477009/gke-rest-api:latest
+          image: my-artifact-repo/my-project-app-477009/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
