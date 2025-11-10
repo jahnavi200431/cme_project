@@ -1,6 +1,6 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-  timeout: '1200s'  # 20 minutes
+   # 20 minutes
 
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
