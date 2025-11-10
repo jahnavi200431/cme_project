@@ -34,9 +34,15 @@ cat > policy.json <<EOF
       }
     }
   ],
-  "notificationChannels": ["$CHANNEL_ID"]
+  "notificationChannels": ["$CHANNEL_ID"],
+  "alertStrategy": {
+    "notificationRateLimit": {
+      "period": "300s"
+    }
+  }
 }
 EOF
+
 
 
 echo "policy.json created."
