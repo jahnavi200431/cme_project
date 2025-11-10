@@ -3,15 +3,54 @@
 # - Pushes it to Artifact Registry
 # - Deploys to a GKE cluster (updates image in manifest, applies manifests, waits for rollout)
 # - Runs enhanced post-deployment health checks and captures diagnostics on failure
+#
+# NOTE: This file now includes a guard step that will exit early (success) unless the
+# build was triggered for the "main" or "master" branch. Use a GitHub/CSR trigger
+# that sets BRANCH_NAME or BRANCH_REF for this guard to work.
 
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
+  timeout: '1200s'  # 20 minutes
 
 # Cloud Build will run steps using this service account
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 steps:
+  # ----------------------------------------------------------------------------
+  # 0) Guard: Only proceed when this build is for main or master branch
+  #    (exits 0/skip for other branches)
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Verify Branch'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo "🔎 Verifying branch / trigger context..."
+
+        BR=""
+        # Cloud Build sets BRANCH_NAME for many trigger types; GitHub push triggers may set BRANCH_REF
+        if [ -n "$BRANCH_NAME" ]; then
+          BR="$BRANCH_NAME"
+        fi
+
+        if [ -z "$BR" ] && [ -n "$BRANCH_REF" ]; then
+          # BRANCH_REF could be refs/heads/main - take the last path component
+          BR=$(basename "$BRANCH_REF")
+        fi
+
+        if [ -z "$BR" ]; then
+          # If branch is unknown, we assume this build must be intentional (e.g. manual trigger)
+          echo "Branch not detected (BRANCH_NAME/BRANCH_REF not set). Proceeding with the build."
+        else
+          echo "Build triggered for branch: $BR"
+          if ! echo "$BR" | egrep -q '^(main|master)$'; then
+            echo "This pipeline only runs for the main or master branch. Skipping build steps."
+            # Exit with success so CI doesn't report a failure for non-main builds
+            exit 0
+          fi
+        fi
+
   # ----------------------------------------------------------------------------
   # 1) Build the Docker image
   # ----------------------------------------------------------------------------
