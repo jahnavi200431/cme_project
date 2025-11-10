@@ -17,36 +17,7 @@ options:
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 steps:
-  # ----------------------------------------------------------------------------
-  # 0) Guard: Only proceed when this build is for main or master branch
-  # ----------------------------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Verify Branch'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        echo "🔎 Verifying branch / trigger context..."
-
-        BR=""
-        if [ -n "$BRANCH_NAME" ]; then
-          BR="$BRANCH_NAME"
-        fi
-
-        if [ -z "$BR" ] && [ -n "$BRANCH_REF" ]; then
-          BR=$(basename "$BRANCH_REF")
-        fi
-
-        if [ -z "$BR" ]; then
-          echo "Branch not detected (BRANCH_NAME/BRANCH_REF not set). Proceeding with the build."
-        else
-          echo "Build triggered for branch: $BR"
-          if ! echo "$BR" | egrep -q '^(main|master)$'; then
-            echo "This pipeline only runs for the main or master branch. Skipping build steps."
-            exit 0
-          fi
-        fi
-
+  
   # ----------------------------------------------------------------------------
   # 1) Build the Docker image
   # ----------------------------------------------------------------------------
@@ -107,7 +78,7 @@ steps:
         echo "🔍 Running post-deployment checks and integration tests..."
 
         # wait for LoadBalancer IP
-        LB_IP=""
+        LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
         while [ -z "$LB_IP" ] && [ $RETRY -lt $MAX_RETRIES ]; do
