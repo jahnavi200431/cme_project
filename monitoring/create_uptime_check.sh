@@ -25,17 +25,19 @@ cat > policy.json <<EOF
 {
   "displayName": "Uptime Check Failure Alert",
   "enabled": true,
+  "combiner": "OR",
   "conditions": [
     {
       "displayName": "Uptime Check Failed",
       "conditionMatchedLog": {
-        "filter": "severity=\"ERROR\""
+        "filter": "severity=\\"ERROR\\""
       }
     }
   ],
   "notificationChannels": ["$CHANNEL_ID"]
 }
 EOF
+
 
 echo "policy.json created."
 
