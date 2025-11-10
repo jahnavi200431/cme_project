@@ -1,8 +1,7 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
+  timeout: '1200s'  # 20 minutes
 
-# Cloud Build will run steps using this service account
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
 steps:
@@ -72,7 +71,7 @@ steps:
         set -euo pipefail
         echo "🔍 Running post-deployment checks and integration tests..."
 
-        # wait for LoadBalancer IP
+        # wait for LoadBalancer IP (use $$ to prevent Cloud Build substitution)
         LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
@@ -122,24 +121,42 @@ steps:
         LB="$$LB_IP" bash tests/integration_test.sh
 
         echo "✅ Integration tests passed."
+    env:
+      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
-        # Optionally create a Cloud Monitoring uptime check (only if trigger sets substitution _CREATE_UPTIME_CHECK=true)
-        if [ "$${_CREATE_UPTIME_CHECK:-false}" = "true" ]; then
-          echo "🔔 Creating/updating Cloud Monitoring uptime check for /products (requires proper IAM)"
-          # This uses the alpha gcloud command; adjust as needed and ensure Cloud Monitoring API is enabled
-          gcloud alpha monitoring uptime-checks create http \
-            --project=my-project-app-477009 \
-            --display-name="gke-rest-api-products" \
-            --host="$$LB_IP" \
-            --path="/products" \
-            --port=80 \
-            --http-check-response-code=200 \
-            --timeout=10s \
-            --period=300s || echo "⚠️ Could not create uptime check (insufficient permissions or alpha APIs not enabled)."
-        else
-          echo "Monitoring creation skipped (set _CREATE_UPTIME_CHECK=true to enable)."
+  # ----------------------------------------------------------------------------
+  # 5) Create / Update Cloud Monitoring uptime check (optional)
+  #    Controlled by substitution _CREATE_UPTIME_CHECK (set to "true" in trigger or gcloud submit)
+  # ----------------------------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Create Uptime Check'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        # default behavior: run if substitution _CREATE_UPTIME_CHECK is true (set it in your trigger)
+        if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
+          echo "Skipping uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
+          exit 0
         fi
-        echo "✅ Health check passed: endpoint returned success."
+
+        echo "🔔 Creating/updating uptime check using monitoring/create_uptime_check.sh..."
+
+        # Resolve LB IP (use $$ to prevent Cloud Build expanding)
+        LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        if [ -z "$$LB_IP" ]; then
+          echo "LB IP not found; skipping uptime-check creation"
+          exit 0
+        fi
+
+        # Ensure script is executable and run it with provided notification channel
+        chmod +x monitoring/create_uptime_check.sh || true
+
+        ./monitoring/create_uptime_check.sh \
+          --project=my-project-app-477009 \
+          --lb-ip="$$LB_IP" \
+          --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
     env:
       - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
