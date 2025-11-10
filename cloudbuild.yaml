@@ -73,7 +73,7 @@ steps:
         echo "🔍 Running post-deployment checks and integration tests..."
 
         # Try to resolve LoadBalancer IP or Ingress address (use $$ to avoid Cloud Build substitution here)
-        LB_IP=""
+        LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
         while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
