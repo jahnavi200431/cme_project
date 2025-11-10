@@ -135,7 +135,7 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-
+        LB_IP="34.133.250.137"
         if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
           echo "Skipping synthetic uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
           exit 0
