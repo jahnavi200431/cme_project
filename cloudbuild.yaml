@@ -1,6 +1,5 @@
 options:
   logging: 'CLOUD_LOGGING_ONLY'
-    # 20 minutes
 
 serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
 
@@ -28,7 +27,7 @@ steps:
       - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
   # ----------------------------------------------------------------------------
-  # 3) Deploy to GKE: update manifest image, apply manifests, wait for rollout
+  # 3) Deploy to GKE
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Deploy to GKE'
@@ -36,31 +35,24 @@ steps:
     args:
       - '-c'
       - |
-        echo "📦 Starting deployment to GKE for project my-project-app-477009..."
+        echo "📦 Starting deployment to GKE..."
 
-        # Authenticate kubectl to the cluster
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
 
-        echo "🔧 Updating image reference in k8s/deployment.yaml..."
-        # Replace the image: line in the deployment manifest with the artifact registry image.
-        # This matches the "image:" key and replaces the value. Keep a backup with .bak for easier debugging.
+        echo "🔧 Updating image reference..."
         sed -i.bak "s|\(image:[[:space:]]*\).*|\1us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
 
         echo "🚀 Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
 
-        echo "⏳ Waiting for deployment rollout to finish (timeout: 80s)..."
-        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout did not finish within timeout." && kubectl get pods -o wide && exit 1)
-
-        echo "✅ Deployment applied and rollout complete."
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
+        echo "⏳ Waiting for rollout..."
+        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout timeout" && kubectl get pods -o wide && exit 1)
 
   # ----------------------------------------------------------------------------
-  # 4) Post-deployment checks: ensure LB IP, run health checks and integration tests
+  # 4) Post-deployment checks & integration tests
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Post-Deployment Checks & Integration Tests'
@@ -69,12 +61,13 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        echo "🔍 Running post-deployment checks and integration tests..."
 
-        # wait for LoadBalancer IP (use $$ to prevent Cloud Build substitution)
+        echo "🔍 Running post-deployment checks..."
+
         LB_IP="34.133.250.137"
         MAX_RETRIES=12
         RETRY=0
+
         while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
           echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
@@ -83,7 +76,7 @@ steps:
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo "❌ LoadBalancer IP not found. Gathering diagnostics..."
+          echo "❌ LoadBalancer IP not found. Diagnosing..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
@@ -92,22 +85,21 @@ steps:
           exit 1
         fi
 
-        echo "✅ LoadBalancer IP: $$LB_IP"
+        echo "✅ LoadBalancer IP resolved: $$LB_IP"
 
-        # simple endpoint smoke check before running integration tests
-        echo "⏳ Performing simple /products endpoint health check..."
+        echo "⏳ Checking /products endpoint..."
         for i in $$(seq 1 8); do
-          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP:80/products" || echo "000")
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
           echo "Attempt $$i: HTTP $$http_status"
           if [ "$$http_status" = "200" ]; then
-            echo "✅ /products returned 200"
+            echo "✅ /products returned 200 OK"
             break
           fi
           sleep 5
         done
 
         if [ "$$http_status" != "200" ]; then
-          echo "❌ /products endpoint did not return 200 after retries. Gathering diagnostics..."
+          echo "❌ /products endpoint failing."
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
           kubectl describe svc gke-rest-api-service || true
@@ -115,18 +107,14 @@ steps:
           exit 1
         fi
 
-        # Run integration test script from the repo (script returns non-zero on failure)
-        echo "🧪 Running integration tests script tests/integration_test.sh"
+        echo "🧪 Running integration tests..."
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
 
         echo "✅ Integration tests passed."
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
 
   # ----------------------------------------------------------------------------
- # 5) Create / Update synthetic uptime checks for key API endpoints (optional)
-  #    Controlled by substitution _CREATE_UPTIME_CHECK (set to "true" in trigger or gcloud submit)
+  # 5) Synthetic uptime checks
   # ----------------------------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Create Synthetic Uptime Checks'
@@ -135,48 +123,43 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        
+
         if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
-          echo "Skipping synthetic uptime-check creation (set _CREATE_UPTIME_CHECK=true to enable)."
+          echo "Skipping uptime-check creation."
           exit 0
         fi
 
-        echo "🔔 Creating/updating synthetic uptime checks for key endpoints..."
+        echo "🔔 Creating synthetic uptime checks..."
 
-        # Resolve LB IP / Ingress address (prefer substitution then cluster resources)
         LB_IP="34.133.250.137"
-        if [ -z "$LB_IP" ]; then
+
+        if [ -z "$$LB_IP" ]; then
           LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
         fi
-        if [ -z "$LB_IP" ]; then
+
+        if [ -z "$$LB_IP" ]; then
           LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
         fi
-        if [ -z "$LB_IP" ]; then
+
+        if [ -z "$$LB_IP" ]; then
           LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
         fi
 
-        if [ -z "$LB_IP" ]; then
-          echo "LB IP / Ingress address not found; skipping synthetic checks creation."
+        if [ -z "$$LB_IP" ]; then
+          echo "LB IP not found; skipping uptime checks."
           exit 0
         fi
 
-        echo "Resolved host for synthetic checks: $LB_IP"
+        echo "Using host $$LB_IP for synthetic checks."
 
-        # Ensure the monitoring script is available & executable
         chmod +x monitoring/create_uptime_check.sh || true
 
-        # Create checks for the key endpoints: /products, /health, /metrics
         ./monitoring/create_uptime_check.sh \
           --project=my-project-app-477009 \
-          --host="34.133.250.137" \
+          --host="$$LB_IP" \
           --paths="/products,/health,/metrics" \
           --name-prefix="gke-rest-api" \
           --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
-    env:
-      - 'CLOUDSDK_COMPUTE_ZONE=us-central1-a'
-# ----------------------------------------------------------------------------
-# Images built by this pipeline to be stored in Artifact Registry
-# ----------------------------------------------------------------------------
+
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
-
