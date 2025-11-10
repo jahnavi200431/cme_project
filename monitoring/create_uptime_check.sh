@@ -1,187 +1,212 @@
 #!/usr/bin/env bash
-# Create or update a Cloud Monitoring uptime check for the /products endpoint.
-# Usage:
-#   ./monitoring/create_uptime_check.sh [--project=PROJECT] [--lb-ip=IP] [--name=CHECK_NAME] [--notification-channel=CHANNEL_ID]
+# Create/update synthetic uptime checks for multiple API endpoints using the Monitoring REST API.
+# Uses gcloud to discover existing checks and to obtain an access token for the REST calls.
 #
-# This script:
-# - accepts both `--key=value` and `--key value` forms
-# - falls back to environment variable LB if --lb-ip is not supplied
-# - is idempotent (will detect existing uptime check / policy and update)
-# - prints detailed gcloud errors when operations fail
+# Usage:
+#   ./monitoring/create_synthetic_checks.sh \
+#     --project=my-project-app-477009 \
+#     --host=34.133.250.137 \
+#     --paths="/products,/health,/metrics" \
+#     --name-prefix=gke-rest-api \
+#     --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
 set -euo pipefail
 
-# Defaults (adjust if you like)
 PROJECT="my-project-app-477009"
-LB_IP="34.133.250.137"
-CHECK_NAME="gke-rest-api-products"
+HOST="34.133.250.137"
+PATHS="/products"
+NAME_PREFIX="gke-rest-api"
 NOTIF_CHANNEL_ID="projects/my-project-app-477009/notificationChannels/12064618237516244045"
 
 usage() {
   cat <<EOF
-Usage: $0 [--project=PROJECT] [--lb-ip=IP] [--name=CHECK_NAME] [--notification-channel=CHANNEL_ID]
+Usage: $0 --host=HOST [--project=PROJECT] [--paths=/p1,/p2] [--name-prefix=PREFIX] [--notification-channel=CHANNEL_ID]
 
-Options:
-  --project                 GCP project id (default: ${PROJECT})
-  --lb-ip                   LoadBalancer IP (default: ${LB_IP} or from env LB)
-  --name                    Uptime check display name (default: ${CHECK_NAME})
-  --notification-channel    Notification channel resource name (projects/../notificationChannels/NNNN). Optional.
-  -h, --help                Show this help and exit
-
-Examples:
-  $0 --lb-ip=34.133.250.137
-  $0 --project=my-project --lb-ip=34.133.250.137 --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
+Example:
+  $0 --host=34.133.250.137 --paths="/products,/health" --notification-channel="projects/.../notificationChannels/123"
 EOF
 }
 
-# Parse args: prefer getopt if available (supports --key=value)
-if getopt --test >/dev/null 2>&1; then
-  PARSED=$(getopt -o h --long help,project:,lb-ip:,name:,notification-channel: -- "$@") || { usage; exit 2; }
-  eval set -- "$PARSED"
-  while true; do
-    case "$1" in
-      --project) PROJECT="$2"; shift 2;;
-      --lb-ip) LB_IP="$2"; shift 2;;
-      --name) CHECK_NAME="$2"; shift 2;;
-      --notification-channel) NOTIF_CHANNEL_ID="$2"; shift 2;;
-      -h|--help) usage; exit 0;;
-      --) shift; break;;
-      *) echo "Unknown option: $1"; usage; exit 2;;
-    esac
-  done
-else
-  # Fallback parser: supports --key=value and --key value
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --project=*) PROJECT="${1#*=}"; shift;;
-      --project) PROJECT="$2"; shift 2;;
-      --lb-ip=*) LB_IP="${1#*=}"; shift;;
-      --lb-ip) LB_IP="$2"; shift 2;;
-      --name=*) CHECK_NAME="${1#*=}"; shift;;
-      --name) CHECK_NAME="$2"; shift 2;;
-      --notification-channel=*) NOTIF_CHANNEL_ID="${1#*=}"; shift;;
-      --notification-channel) NOTIF_CHANNEL_ID="$2"; shift 2;;
-      -h|--help) usage; exit 0;;
-      *) echo "Unknown arg: $1"; usage; exit 2;;
-    esac
-  done
-fi
+# parse args (support --key=value and --key value)
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project=*) PROJECT="${1#*=}"; shift;;
+    --project) PROJECT="$2"; shift 2;;
+    --host=*) HOST="${1#*=}"; shift;;
+    --host) HOST="$2"; shift 2;;
+    --paths=*) PATHS="${1#*=}"; shift;;
+    --paths) PATHS="$2"; shift 2;;
+    --name-prefix=*) NAME_PREFIX="${1#*=}"; shift;;
+    --name-prefix) NAME_PREFIX="$2"; shift 2;;
+    --notification-channel=*) NOTIF_CHANNEL_ID="${1#*=}"; shift;;
+    --notification-channel) NOTIF_CHANNEL_ID="$2"; shift 2;;
+    -h|--help) usage; exit 0;;
+    *) echo "Unknown arg: $1"; usage; exit 2;;
+  esac
+done
 
-# Allow LB_IP from environment if not provided
-if [ -z "${LB_IP:-}" ] && [ -n "${LB:-}" ]; then
-  LB_IP="$LB"
-fi
-
-if [ -z "${LB_IP:-}" ]; then
-  echo "ERROR: LoadBalancer IP not provided (--lb-ip) and LB env var not set."
+if [ -z "${HOST:-}" ]; then
+  echo "ERROR: --host is required"
   usage
   exit 2
 fi
 
-echo "Project: $PROJECT"
-echo "LB IP: $LB_IP"
-echo "Check name: $CHECK_NAME"
-if [ -n "${NOTIF_CHANNEL_ID:-}" ]; then
-  echo "Notification channel: $NOTIF_CHANNEL_ID"
-else
-  echo "No notification channel provided; alerting policy creation will be skipped."
-fi
-
-# Ensure gcloud available
 if ! command -v gcloud >/dev/null 2>&1; then
   echo "ERROR: gcloud not found in PATH"
   exit 2
 fi
 
-# Quick note about required APIs
+if ! command -v curl >/dev/null 2>&1; then
+  echo "ERROR: curl not found in PATH"
+  exit 2
+fi
+
+echo "Project: $PROJECT"
+echo "Host: $HOST"
+echo "Paths: $PATHS"
+echo "Display name prefix: $NAME_PREFIX"
+if [ -n "${NOTIF_CHANNEL_ID:-}" ]; then
+  echo "Notification channel: $NOTIF_CHANNEL_ID"
+fi
+
+# Ensure Monitoring API seems enabled (informational)
 if ! gcloud services list --project="$PROJECT" --enabled --filter="name:monitoring.googleapis.com" --format="value(config.name)" >/dev/null 2>&1; then
-  echo "Warning: Cloud Monitoring API may not be enabled for project $PROJECT. If creation fails, run:"
+  echo "Warning: Cloud Monitoring API may not be enabled in project $PROJECT. If creation fails run:"
   echo "  gcloud services enable monitoring.googleapis.com --project=$PROJECT"
 fi
 
-# Helper to run gcloud commands and show stderr on failure
-run_gcloud() {
-  if ! output=$("$@" 2>&1); then
-    echo "ERROR running: $*"
-    echo "gcloud output:"
-    echo "$output"
-    return 1
-  fi
-  echo "$output"
-  return 0
-}
+# helper to create an uptime check via REST API
+create_uptime_check() {
+  local display_name="$1"
+  local path="$2"
 
-# Look for an existing uptime check with this display name
-EXISTING_CHECK=$(gcloud alpha monitoring uptime-checks list \
-  --project="$PROJECT" \
-  --filter="displayName = \"${CHECK_NAME}\"" \
-  --format="value(name)" 2>/dev/null || true)
-
-if [ -n "$EXISTING_CHECK" ]; then
-  echo "Found existing uptime check: $EXISTING_CHECK"
-  CHECK_ID="$EXISTING_CHECK"
-else
-  echo "Creating uptime check ${CHECK_NAME} -> http://${LB_IP}/products"
-  if ! CHECK_ID=$(run_gcloud gcloud alpha monitoring uptime-checks create http \
-        --project="$PROJECT" \
-        --display-name="$CHECK_NAME" \
-        --host="$LB_IP" \
-        --path="/products" \
-        --port=80 \
-        --http-check-response-code=200 \
-        --timeout=10s \
-        --period=300s \
-        --format="value(name)"); then
-    echo "Failed to create uptime check. See error above."
-    exit 1
-  fi
-  echo "Created uptime check: $CHECK_ID"
-fi
-
-# If notification channel provided, create/update a basic alerting policy
-if [ -n "${NOTIF_CHANNEL_ID:-}" ]; then
-  echo "Creating/updating alerting policy for the uptime check..."
-  POLICY_JSON=$(mktemp)
-  cat > "$POLICY_JSON" <<EOF
+  read -r -d '' PAYLOAD <<EOF || true
 {
-  "displayName": "${CHECK_NAME}-alert",
-  "combiner": "OR",
-  "conditions": [
-    {
-      "displayName": "${CHECK_NAME} - check failed",
-      "conditionThreshold": {
-        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" resource.label.\"host\"=\"${LB_IP}\"",
-        "comparison": "COMPARISON_LT",
-        "thresholdValue": 1,
-        "duration": "00:05:00",
-        "trigger": {
-          "count": 1
-        }
-      }
+  "displayName": "${display_name}",
+  "httpCheck": {
+    "path": "${path}",
+    "port": 80,
+    "requestMethod": "GET",
+    "contentMatchers": []
+  },
+  "timeout": "10s",
+  "period": "300s",
+  "monitoredResource": {
+    "type": "uptime_url",
+    "labels": {
+      "host": "${HOST}",
+      "project_id": "${PROJECT}"
     }
-  ],
-  "notificationChannels": [
-    "${NOTIF_CHANNEL_ID}"
-  ],
-  "enabled": true
+  }
 }
 EOF
 
-  EXISTING_POLICY=$(gcloud alpha monitoring policies list --project="$PROJECT" --filter="displayName=${CHECK_NAME}-alert" --format="value(name)" 2>/dev/null || true)
+  token=$(gcloud auth print-access-token)
+  resp=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT}/uptimeCheckConfigs" \
+    -d "${PAYLOAD}")
+
+  http_code=$(echo "$resp" | tail -n1)
+  body=$(echo "$resp" | sed '$d')
+  if [[ "$http_code" =~ ^2 ]]; then
+    echo "Created uptime check '${display_name}':"
+    echo "$body"
+    return 0
+  else
+    echo "ERROR creating uptime check '${display_name}' (HTTP $http_code):"
+    echo "$body"
+    return 1
+  fi
+}
+
+# helper to create an alerting policy for a host/path (best-effort)
+create_alert_policy() {
+  local display_name="$1"
+
+  read -r -d '' POLICY <<EOF || true
+{
+  "displayName":"${display_name}-alert",
+  "combiner":"OR",
+  "conditions":[
+    {
+      "displayName":"${display_name} - check failed",
+      "conditionThreshold":{
+        "filter":"metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" resource.type=\"uptime_url\" resource.label.\"host\"=\"${HOST}\"",
+        "comparison":"COMPARISON_LT",
+        "thresholdValue":1,
+        "duration":"00:05:00",
+        "trigger":{"count":1}
+      }
+    }
+  ],
+  "notificationChannels":[
+    "${NOTIF_CHANNEL_ID}"
+  ],
+  "enabled":true
+}
+EOF
+
+  # Try to find existing policy with the same displayName
+  EXISTING_POLICY=$(gcloud monitoring policies list --project="$PROJECT" --filter="displayName=${display_name}-alert" --format="value(name)" 2>/dev/null || true)
   if [ -n "$EXISTING_POLICY" ]; then
-    echo "Updating existing alerting policy: $EXISTING_POLICY"
-    if ! run_gcloud gcloud alpha monitoring policies update "$EXISTING_POLICY" --project="$PROJECT" --policy-from-file="$POLICY_JSON"; then
-      echo "Warning: failed to update alerting policy"
+    echo "Alerting policy already exists: $EXISTING_POLICY (skipping create)"
+    return 0
+  fi
+
+  token=$(gcloud auth print-access-token)
+  resp=$(curl -s -w "\n%{http_code}" -X POST \
+    -H "Authorization: Bearer ${token}" \
+    -H "Content-Type: application/json" \
+    "https://monitoring.googleapis.com/v3/projects/${PROJECT}/alertPolicies" \
+    -d "${POLICY}")
+
+  http_code=$(echo "$resp" | tail -n1)
+  body=$(echo "$resp" | sed '$d')
+  if [[ "$http_code" =~ ^2 ]]; then
+    echo "Created alerting policy for '${display_name}':"
+    echo "$body"
+    return 0
+  else
+    echo "WARNING: failed to create alerting policy for '${display_name}' (HTTP $http_code)"
+    echo "$body"
+    return 1
+  fi
+}
+
+# split PATHS by comma and iterate
+IFS=',' read -r -a p_arr <<< "$PATHS"
+for raw in "${p_arr[@]}"; do
+  # trim whitespace
+  p="$(echo "$raw" | awk '{$1=$1};1')"
+  [ -z "$p" ] && continue
+  case "$p" in
+    /*) ;; # ok
+    *) p="/$p";;
+  esac
+
+  # safe display name (replace / with - and remove leading -)
+  safe="$(echo "$p" | sed 's|/|-|g' | sed 's|^-||')"
+  display_name="${NAME_PREFIX}-${safe}"
+
+  echo "==> Processing ${p} -> displayName='${display_name}'"
+
+  # check existing uptime checks using gcloud (list-configs supports this environment)
+  EXISTING=$(gcloud monitoring uptime list-configs --project="$PROJECT" --filter="displayName=${display_name}" --format="value(name)" 2>/dev/null || true)
+  if [ -n "$EXISTING" ]; then
+    echo "Found existing uptime check: $EXISTING (skipping creation)"
+    continue
+  fi
+
+  # create uptime check
+  if create_uptime_check "${display_name}" "${p}"; then
+    # create alert policy only if notification channel provided
+    if [ -n "${NOTIF_CHANNEL_ID:-}" ]; then
+      create_alert_policy "${display_name}" || echo "Alert creation failed or skipped"
     fi
   else
-    echo "Creating new alerting policy: ${CHECK_NAME}-alert"
-    if ! run_gcloud gcloud alpha monitoring policies create --project="$PROJECT" --policy-from-file="$POLICY_JSON"; then
-      echo "Warning: failed to create alerting policy"
-    fi
+    echo "Failed to create uptime check for ${p}; continuing with next path"
   fi
-  rm -f "$POLICY_JSON"
-  echo "Alerting policy created/updated (if permissions allowed)."
-else
-  echo "Skipping alerting policy creation because no notification channel was provided."
-fi
+done
 
-echo "Done."
+echo "All done."
