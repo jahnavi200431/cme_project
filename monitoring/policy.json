@@ -1,19 +1,21 @@
+
 {
-  "displayName": "Uptime Check Failure Alert",
+  "displayName": "API Uptime Failure Alert",
   "enabled": true,
   "combiner": "OR",
   "conditions": [
     {
-      "displayName": "Uptime Check Failed",
-      "conditionMatchedLog": {
-        "filter": "severity=\"ERROR\""
+      "displayName": "API endpoint is down",
+      "conditionThreshold": {
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.\"check_id\"=\"gke-rest-api-products-9EIPgCWoV6w\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "60s",
+        "trigger": {
+          "count": 1
+        }
       }
     }
   ],
-  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/17195648222355338109"],
-  "alertStrategy": {
-    "notificationRateLimit": {
-      "period": "300s"
-    }
-  }
+  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/17195648222355338109"]
 }
