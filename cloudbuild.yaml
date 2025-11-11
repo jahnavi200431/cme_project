@@ -124,7 +124,7 @@ steps:
       - |
         set -euo pipefail
 
-        if [ "${_CREATE_UPTIME_CHECK:-true}" != "true" ]; then
+        if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
           echo "Skipping uptime-check creation."
           exit 0
         fi
