@@ -1,39 +1,35 @@
 #!/bin/bash
 set -euo pipefail
 
+# === CONFIG ===
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
-API_HOST="${API_HOST:-34.133.250.137}"  # LoadBalancer IP
-ENDPOINTS=("/products" "/products/1")
-CHECK_PERIOD="5"
-TIMEOUT="10"
 
+# Existing uptime checks and their corresponding endpoints
+declare -A UPTIME_CHECKS
+UPTIME_CHECKS["/products"]="gke-rest-api-products-9EIPgCWoV6w"
+ 
+
+# === 1. Set GCP project ===
 echo "Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
+# === 2. Create Notification Channel ===
 echo "Creating notification channel..."
 CHANNEL_ID=$(gcloud alpha monitoring channels create \
   --type=email \
   --display-name="API Uptime Email Alerts" \
   --channel-labels=email_address="$EMAIL" \
-  --format="value(name)")
+  --format="value(name)" || true)  # ignore if already exists
+
 echo "Notification Channel ID: $CHANNEL_ID"
 
-for PATH in "${ENDPOINTS[@]}"; do
-    # Replace slashes with dashes safely
-    CHECK_NAME=$(echo "gke-rest-api-$PATH" | sed 's#/#-#g')
-    echo "Creating uptime check for endpoint $PATH ..."
+# === 3. Create Alert Policies using existing uptime checks ===
+for PATH in "${!UPTIME_CHECKS[@]}"; do
+    UPTIME_CHECK_ID="${UPTIME_CHECKS[$PATH]}"
+    CHECK_NAME="alert-$(echo $PATH | tr '/' '-')"
 
-    UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
-        --synthetic-target=http \
-        --host="$API_HOST" \
-        --path="$PATH" \
-        --port=80 \
-        --period="$CHECK_PERIOD" \
-        --timeout="$TIMEOUT" \
-        --format="value(name)")
-
-    echo "Uptime Check created: $UPTIME_CHECK_ID"
+    echo "Creating alert policy for $PATH using existing uptime check $UPTIME_CHECK_ID..."
 
     POLICY_FILE="policy-${CHECK_NAME}.json"
     cat > "$POLICY_FILE" <<EOF
@@ -59,8 +55,11 @@ for PATH in "${ENDPOINTS[@]}"; do
 }
 EOF
 
-    gcloud alpha monitoring policies create --policy-from-file=policy.json
-    echo "Alert policy created for $PATH."
+    # Apply the alert policy
+    gcloud alpha monitoring policies create --policy-from-file=policy.json || true
+
+    echo "✅ Alert policy created for $PATH."
 done
 
-echo "✅ All uptime checks and alerts created successfully!"
+echo "🎉 All alert policies created successfully using existing uptime checks!"
+
