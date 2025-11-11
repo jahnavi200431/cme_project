@@ -8,13 +8,11 @@
     {
       "displayName": "API endpoint down",
       "conditionThreshold": {
-        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"gke-rest-api-products-9EIPgCWoV6w\"",
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.uptime_check_id=\"gke-rest-api-products-9EIPgCWoV6w\"",
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "60s",
-        "trigger": {
-          "count": 1
-        }
+        "trigger": { "count": 1 }
       }
     }
   ],
