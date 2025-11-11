@@ -1,40 +1,46 @@
 #!/bin/bash
-set -euo pipefail
 
 # === CONFIG ===
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
+API_HOST="34.133.250.137"      # Your LoadBalancer IP
+ENDPOINTS=("/products" "/products/1")  # Add more endpoints if needed
+CHECK_PERIOD="5"               # in minutes
+TIMEOUT="10"                   # in seconds
 
-# Existing uptime checks and their corresponding endpoints
-declare -A UPTIME_CHECKS=(
-    ["/products"]="gke-rest-api-products-9EIPgCWoV6w"
-    ["/products/1"]="gke-rest-api-products-1-XXXXXXX"  # Replace with actual check ID
-)
-
-# === 1. Set GCP project ===
-echo "🔧 Setting GCP project..."
-gcloud config set project "$PROJECT_ID"
+# === 1. Set project ===
+echo "Setting project..."
+gcloud config set project $PROJECT_ID
 
 # === 2. Create Notification Channel ===
-echo "📩 Creating notification channel..."
+echo "Creating notification channel..."
 CHANNEL_ID=$(gcloud alpha monitoring channels create \
-    --type=email \
-    --display-name="API Uptime Email Alerts" \
-    --channel-labels=email_address="$EMAIL" \
-    --format="value(name)" || true)  # ignore if already exists
+  --type=email \
+  --display-name="API Uptime Email Alerts" \
+  --channel-labels=email_address=$EMAIL \
+  --format="value(name)")
 
 echo "Notification Channel ID: $CHANNEL_ID"
 
-# === 3. Create Alert Policies using existing uptime checks ===
-for PATH in "${!UPTIME_CHECKS[@]}"; do
-    UPTIME_CHECK_ID="${UPTIME_CHECKS[$PATH]}"
-    # Replace / with - for policy-friendly name
-    CHECK_NAME="alert-${PATH//\//-}"
+# === 3. Create Uptime Checks and Alert Policies ===
+for PATH in "${ENDPOINTS[@]}"; do
+    CHECK_NAME="gke-rest-api-$(echo $PATH | tr '/' '-')"
+    echo "Creating uptime check for endpoint $PATH ..."
 
-    echo "⚡ Creating alert policy for $PATH using existing uptime check $UPTIME_CHECK_ID..."
+    UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
+        --synthetic-target=http \
+        --host="$API_HOST" \
+        --path="$PATH" \
+        --port=80 \
+        --period="$CHECK_PERIOD" \
+        --timeout="$TIMEOUT" \
+        --format="value(name)")
 
+    echo "Uptime Check created: $UPTIME_CHECK_ID"
+
+    # Write Alert Policy JSON
     POLICY_FILE="policy-${CHECK_NAME}.json"
-    cat > "$POLICY_FILE" <<EOF
+    cat > $POLICY_FILE <<EOF
 {
   "displayName": "API Failure Alert - $PATH",
   "enabled": true,
@@ -57,10 +63,9 @@ for PATH in "${!UPTIME_CHECKS[@]}"; do
 }
 EOF
 
-    # Apply the alert policy
-    gcloud alpha monitoring policies create --policy-from-file=policy.json || true
-
-    echo "✅ Alert policy created for $PATH."
+    echo "Creating alert policy for $PATH ..."
+    gcloud alpha monitoring policies create --policy-from-file=$POLICY_FILE
+    echo "Alert policy created for $PATH."
 done
 
-echo "🎉 All alert policies created successfully using existing uptime checks!"
+echo "✅ All uptime checks and alerts created successfully!"
