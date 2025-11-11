@@ -12,7 +12,6 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # keep one new pod available while updating, and don't take any down at once
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -22,12 +21,16 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
-          # default image in manifest; pipeline will update image via kubectl set image
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
+            - name: GOOGLE_CLOUD_PROJECT
+              value: "my-project-app-477009"
+            - name: LOG_LEVEL
+              value: "info"
+            # DB env entries use secretKeyRef (example)
             - name: DB_HOST
               valueFrom:
                 secretKeyRef:
@@ -53,7 +56,6 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PORT
-          # Readiness probe: prevents routing traffic to the pod until the app responds
           readinessProbe:
             httpGet:
               path: /products
@@ -63,7 +65,6 @@ spec:
             timeoutSeconds: 3
             successThreshold: 1
             failureThreshold: 6
-          # Liveness probe: restarts the container if it becomes unhealthy
           livenessProbe:
             httpGet:
               path: /products
@@ -72,13 +73,4 @@ spec:
             periodSeconds: 20
             timeoutSeconds: 3
             failureThreshold: 3
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: gke-rest-api-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: gke-rest-api
 
