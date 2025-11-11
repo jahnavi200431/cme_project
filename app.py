@@ -13,23 +13,13 @@ app = Flask(__name__)
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
-        msg = record.msg
-
-        # If the log message is dict, include it directly
-        if isinstance(msg, dict):
-            log_body = msg
-        else:
-            # Otherwise wrap as message field
-            log_body = {"message": str(msg)}
-
         log = {
             "severity": record.levelname,
+            "message": record.getMessage(),
             "app": "gke-rest-api",
             "version": "1.0.0",
-            **log_body
         }
         return json.dumps(log)
-
 
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
@@ -48,23 +38,46 @@ logging.getLogger("werkzeug").disabled = True
 
 @app.before_request
 def log_request():
-    logger.info({
+    logger.info(json.dumps({
         "event": "request",
         "method": request.method,
         "path": request.path,
         "remote_ip": request.remote_addr
-    })
+    }))
 
 
 @app.after_request
 def log_response(response):
-    logger.info({
+    logger.info(json.dumps({
         "event": "response",
         "method": request.method,
         "path": request.path,
         "status": response.status_code
-    })
+    }))
     return response
+
+
+# --------------------------------------------------------
+# ✅ Health Check Endpoints
+# --------------------------------------------------------
+
+@app.route('/health', methods=['GET'])
+def health():
+    logger.info(json.dumps({"event": "health_check", "status": "ok"}))
+    return {"status": "healthy"}, 200
+
+
+@app.route('/ready', methods=['GET'])
+def readiness():
+    # Check database readiness
+    conn = get_db_connection(check_only=True)
+    status = "ready" if conn else "not ready"
+
+    logger.info(json.dumps({"event": "readiness_check", "status": status}))
+    if conn:
+        conn.close()
+        return {"status": "ready"}, 200
+    return {"status": "not ready"}, 500
 
 
 # --------------------------------------------------------
@@ -89,10 +102,10 @@ def get_db_connection(check_only=False):
             connect_timeout=5
         )
         if not check_only:
-            logger.info({"event": "db_connection", "status": "success"})
+            logger.info(json.dumps({"event": "db_connection", "status": "success"}))
         return conn
     except Exception as e:
-        logger.error({"event": "db_connection_failed", "error": str(e)})
+        logger.error(json.dumps({"event": "db_connection_failed", "error": str(e)}))
         return None
 
 
@@ -103,10 +116,10 @@ def get_db_connection(check_only=False):
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
-        logger.error({
+        logger.error(json.dumps({
             "event": "table_create_failed",
             "reason": "db_connection_failed"
-        })
+        }))
         return
 
     try:
@@ -121,9 +134,9 @@ def create_table_if_not_exists():
             );
         """)
         conn.commit()
-        logger.info({"event": "table_created"})
+        logger.info(json.dumps({"event": "table_created"}))
     except Exception as e:
-        logger.error({"event": "table_creation_error", "error": str(e)})
+        logger.error(json.dumps({"event": "table_creation_error", "error": str(e)}))
     finally:
         cur.close()
         conn.close()
@@ -272,12 +285,13 @@ def delete_product(product_id):
 # --------------------------------------------------------
 
 if __name__ == "__main__":
-    logger.info({"event": "starting_server"})
+    logger.info(json.dumps({"event": "starting_server"}))
 
+    # Verify DB connectivity at startup
     conn = get_db_connection()
     if conn:
         conn.close()
-        logger.info({"event": "db_verified"})
+        logger.info(json.dumps({"event": "db_verified"}))
 
     create_table_if_not_exists()
 
