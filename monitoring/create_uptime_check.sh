@@ -49,13 +49,7 @@ else
   echo "Notification Channel ID: $CHANNEL_ID"
 fi
 
-for PATH in "${ENDPOINTS[@]}"; do
-  # sanitize path WITHOUT external tools (no tr)
-  trimmed="${PATH#/}"             # remove leading slash
-  sanitized="${trimmed//\//-}"    # replace slashes with hyphens
-  if [[ -z "$sanitized" ]]; then
-    sanitized="root"
-  fi
+
 
   CHECK_NAME="${NAME_PREFIX}-${sanitized}"
   echo "Creating uptime check for endpoint '$PATH' (check name: $CHECK_NAME)..."
