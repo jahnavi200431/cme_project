@@ -66,7 +66,7 @@ for PATH in "${ENDPOINTS[@]}"; do
 EOF
 
     echo "Creating alert policy for $PATH ..."
-    gcloud alpha monitoring policies create --policy-from-file="$POLICY_FILE"
+    gcloud alpha monitoring policies create --policy-from-file=policy.json
     echo "Alert policy created for $PATH."
 done
 
