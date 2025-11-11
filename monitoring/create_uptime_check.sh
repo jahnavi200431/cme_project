@@ -1,14 +1,15 @@
 #!/bin/bash
 
+# === CONFIG ===
 PROJECT_ID="my-project-app-477009"
+UPTIME_CHECK_ID="gke-rest-api-products-9EIPgCWoV6w"
 EMAIL="mallelajahnavi123@gmail.com"
-CHECK_NAME="gke-rest-api-products"
 
 # Set project
-echo "Setting project..."
+echo "Setting GCP project..."
 gcloud config set project $PROJECT_ID
 
-# Create notification channel
+# === 1. Create Notification Channel ===
 echo "Creating notification channel..."
 CHANNEL_ID=$(gcloud alpha monitoring channels create \
   --type=email \
@@ -18,7 +19,8 @@ CHANNEL_ID=$(gcloud alpha monitoring channels create \
 
 echo "Notification Channel ID: $CHANNEL_ID"
 
-# Create alert policy JSON for uptime check
+# === 2. Create Alert Policy JSON ===
+echo "Writing policy.json..."
 cat > policy.json <<EOF
 {
   "displayName": "API Uptime Failure Alert",
@@ -26,9 +28,9 @@ cat > policy.json <<EOF
   "combiner": "OR",
   "conditions": [
     {
-      "displayName": "API endpoint is down",
+      "displayName": "API endpoint down",
       "conditionThreshold": {
-        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.label.\"check_id\"=\"$CHECK_NAME\"",
+        "filter": "resource.type=\"uptime_url\" AND metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND metric.label.check_id=\"$UPTIME_CHECK_ID\"",
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "60s",
@@ -42,8 +44,12 @@ cat > policy.json <<EOF
 }
 EOF
 
-# Create alert policy
+echo "policy.json created."
+
+# === 3. Create Alert Policy ===
 echo "Creating alert policy..."
 gcloud alpha monitoring policies create --policy-from-file=policy.json
 
-echo "✅ Synthetic monitoring alert created!"
+echo "✅ Setup completed successfully!"
+echo "✅ Alert will only trigger if the API is down."
+
