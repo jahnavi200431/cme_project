@@ -3,35 +3,102 @@ import psycopg2
 import os
 import logging
 import sys
+from time import time
 
 app = Flask(__name__)
 
 # -----------------------
-# 🔧 Logging Configuration (Fix for Cloud Logging "ERROR" severity issue)
+# ✅ Structured Logging Configuration
 # -----------------------
-# Send normal logs (access/info) to stdout instead of stderr
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-app.logger.handlers = logging.getLogger().handlers
-app.logger.setLevel(logging.INFO)
+logger = logging.getLogger("gke-rest-api")
+logger.setLevel(logging.INFO)
+
+# Send logs to STDOUT (so Cloud Logging treats them as INFO, not ERROR)
+handler = logging.StreamHandler(sys.stdout)
+formatter = logging.Formatter(
+    '{"level":"%(levelname)s","message":"%(message)s","app":"gke-rest-api","version":"1.0.0"}'
+)
+handler.setFormatter(formatter)
+
+# Avoid duplicate handlers
+if not logger.handlers:
+    logger.addHandler(handler)
+
+# Wrap logger with metadata
+logger = logging.LoggerAdapter(logger, {
+    "app": "gke-rest-api",
+    "version": "1.0.0"
+})
+
+app.logger = logger
+
 
 # -----------------------
-# Health Check Endpoint
+# ✅ Request Logging Middleware
+# -----------------------
+
+@app.before_request
+def start_timer():
+    request.start_time = time()
+
+
+@app.after_request
+def log_request(response):
+    try:
+        latency = round((time() - request.start_time) * 1000, 2)
+    except Exception:
+        latency = None
+
+    log_data = {
+        "method": request.method,
+        "path": request.path,
+        "status": response.status_code,
+        "remote_ip": request.headers.get("X-Forwarded-For", request.remote_addr),
+        "latency_ms": latency,
+        "user_agent": request.headers.get("User-Agent"),
+    }
+
+    # avoid logging probe spam
+    if request.path not in ("/health", "/liveness", "/readiness"):
+        app.logger.info(f"Request processed {log_data}")
+
+    return response
+
+
+# -----------------------
+# ✅ Health, Readiness, Liveness Endpoints
 # -----------------------
 @app.route('/health', methods=['GET'])
 def health():
     return {'status': 'healthy'}, 200
 
+
+@app.route("/liveness", methods=["GET"])
+def liveness():
+    # app is running
+    return {"status": "alive"}, 200
+
+
+@app.route("/readiness", methods=["GET"])
+def readiness():
+    conn = get_db_connection()
+    if conn:
+        conn.close()
+        return {"status": "ready"}, 200
+    return {"status": "not ready"}, 500
+
+
 # -----------------------
-# Database Configuration
+# ✅ DB Configuration
 # -----------------------
-DB_HOST = os.getenv("DB_HOST", "136.115.254.71")  # Cloud SQL public IP
+DB_HOST = os.getenv("DB_HOST", "136.115.254.71")
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS", "postgres")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
+
 def get_db_connection():
-    """Return a psycopg2 connection or None if failed."""
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
@@ -42,18 +109,19 @@ def get_db_connection():
         )
         return conn
     except Exception as e:
-        app.logger.error("Database connection failed!")
-        app.logger.error(e)
+        app.logger.error(f"Database connection failed: {str(e)}")
         return None
 
+
 # -----------------------
-# Ensure Table Exists
+# ✅ Ensure Table Exists
 # -----------------------
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
         app.logger.error("Cannot create table because DB connection failed")
         return
+
     try:
         cur = conn.cursor()
         cur.execute("""
@@ -68,15 +136,16 @@ def create_table_if_not_exists():
         conn.commit()
         app.logger.info("✅ Product table ensured in database.")
     except Exception as e:
-        app.logger.error("❌ Failed to create table:")
-        app.logger.error(e)
+        app.logger.error(f"❌ Failed to create table: {str(e)}")
     finally:
         cur.close()
         conn.close()
 
+
 # -----------------------
-# API Endpoints
+# ✅ API Endpoints
 # -----------------------
+
 @app.route("/")
 def home():
     return jsonify({"message": "Welcome to the Product API (connected via Cloud SQL)"})
@@ -96,6 +165,7 @@ def get_products():
         products = [dict(zip(columns, row)) for row in rows]
         return jsonify(products)
     except Exception as e:
+        app.logger.error(f"Error fetching products: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -117,6 +187,7 @@ def get_product(product_id):
         columns = [desc[0] for desc in cur.description]
         return jsonify(dict(zip(columns, row)))
     except Exception as e:
+        app.logger.error(f"Error fetching product: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -149,6 +220,7 @@ def add_product():
         product_id = cur.fetchone()[0]
         return jsonify({"message": "Product added successfully!", "id": product_id}), 201
     except Exception as e:
+        app.logger.error(f"Error adding product: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -181,6 +253,7 @@ def update_product(product_id):
         conn.commit()
         return jsonify({"message": f"Product {product_id} updated successfully!"})
     except Exception as e:
+        app.logger.error(f"Error updating product: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -203,22 +276,24 @@ def delete_product(product_id):
         conn.commit()
         return jsonify({"message": f"Product {product_id} deleted successfully!"})
     except Exception as e:
+        app.logger.error(f"Error deleting product: {str(e)}")
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
         conn.close()
 
+
 # -----------------------
-# Start the App
+# ✅ Start Application
 # -----------------------
 if __name__ == "__main__":
-    app.logger.info("Starting Flask API and testing Cloud SQL connection...")
+    app.logger.info("Starting Flask API and verifying DB connection...")
+    
     conn = get_db_connection()
     if conn:
         conn.close()
-        app.logger.info("✅ Cloud SQL connection verified successfully!")
+        app.logger.info("✅ DB connection OK!")
 
-    # Auto-create table
     create_table_if_not_exists()
 
     port = int(os.getenv("PORT", 8080))
