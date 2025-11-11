@@ -12,6 +12,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
+      # keep one new pod available while updating, and don't take any down at once
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -21,39 +22,23 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
+          # default image in manifest; pipeline will update image via kubectl set image
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
-          # TEMP DEBUG: override DB settings to avoid startup crash
           env:
             - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
+              value: "136.115.254.71"
             - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
+              value: "productdb"
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
+              value: "postgres"
             - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
+              value: "postgres"
             - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
-          command: ["sh", "-c", "echo 'Starting debug container'; sleep 3600"]
-
+              value: "5432"
+          
 ---
 apiVersion: v1
 kind: Service
@@ -67,5 +52,3 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
-
-
