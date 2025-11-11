@@ -3,57 +3,35 @@ import psycopg2
 import os
 import logging
 import sys
-from pythonjsonlogger import jsonlogger
 
 app = Flask(__name__)
 
 # -----------------------
-# 🔧 Structured JSON Logging Configuration
+# 🔧 Logging Configuration (Fix for Cloud Logging "ERROR" severity issue)
 # -----------------------
-logHandler = logging.StreamHandler(sys.stdout)
-formatter = jsonlogger.JsonFormatter(
-    '%(asctime)s %(name)s %(levelname)s %(message)s %(extra)s'
-)
-logHandler.setFormatter(formatter)
-
-logger = logging.getLogger()
-logger.addHandler(logHandler)
-logger.setLevel(logging.INFO)
-
-# Use Flask's logger
-app.logger.handlers = logger.handlers
+# Send normal logs (access/info) to stdout instead of stderr
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+app.logger.handlers = logging.getLogger().handlers
 app.logger.setLevel(logging.INFO)
-
-# Helper function to log structured events
-def log_event(level, message, **kwargs):
-    extra = {"extra": kwargs} if kwargs else {}
-    if level.lower() == "info":
-        app.logger.info(message, extra=extra)
-    elif level.lower() == "warning":
-        app.logger.warning(message, extra=extra)
-    elif level.lower() == "error":
-        app.logger.error(message, extra=extra)
-    elif level.lower() == "exception":
-        app.logger.exception(message, extra=extra)
 
 # -----------------------
 # Health Check Endpoint
 # -----------------------
 @app.route('/health', methods=['GET'])
 def health():
-    log_event("info", "Health check requested")
     return {'status': 'healthy'}, 200
 
 # -----------------------
 # Database Configuration
 # -----------------------
-DB_HOST = os.getenv("DB_HOST", "136.115.254.71")
+DB_HOST = os.getenv("DB_HOST", "136.115.254.71")  # Cloud SQL public IP
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS", "postgres")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
 def get_db_connection():
+    """Return a psycopg2 connection or None if failed."""
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
@@ -62,10 +40,10 @@ def get_db_connection():
             password=DB_PASS,
             port=DB_PORT
         )
-        log_event("info", "Database connection established")
         return conn
     except Exception as e:
-        log_event("exception", "Database connection failed", error=str(e))
+        app.logger.error("Database connection failed!")
+        app.logger.error(e)
         return None
 
 # -----------------------
@@ -74,7 +52,7 @@ def get_db_connection():
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
-        log_event("error", "Cannot create table, DB connection failed")
+        app.logger.error("Cannot create table because DB connection failed")
         return
     try:
         cur = conn.cursor()
@@ -88,9 +66,10 @@ def create_table_if_not_exists():
             );
         """)
         conn.commit()
-        log_event("info", "✅ Product table ensured in database")
+        app.logger.info("✅ Product table ensured in database.")
     except Exception as e:
-        log_event("exception", "Failed to create table", error=str(e))
+        app.logger.error("❌ Failed to create table:")
+        app.logger.error(e)
     finally:
         cur.close()
         conn.close()
@@ -100,8 +79,8 @@ def create_table_if_not_exists():
 # -----------------------
 @app.route("/")
 def home():
-    log_event("info", "Home endpoint accessed")
     return jsonify({"message": "Welcome to the Product API (connected via Cloud SQL)"})
+
 
 @app.route("/products", methods=["GET"])
 def get_products():
@@ -115,15 +94,13 @@ def get_products():
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         products = [dict(zip(columns, row)) for row in rows]
-
-        log_event("info", "Fetched all products", count=len(products))
         return jsonify(products)
     except Exception as e:
-        log_event("exception", "Error fetching products", error=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
         conn.close()
+
 
 @app.route("/products/<int:product_id>", methods=["GET"])
 def get_product(product_id):
@@ -136,17 +113,15 @@ def get_product(product_id):
         cur.execute("SELECT * FROM product WHERE id = %s;", (product_id,))
         row = cur.fetchone()
         if not row:
-            log_event("warning", "Product not found", product_id=product_id)
             return jsonify({"error": "Product not found"}), 404
         columns = [desc[0] for desc in cur.description]
-        log_event("info", "Fetched single product", product_id=product_id)
         return jsonify(dict(zip(columns, row)))
     except Exception as e:
-        log_event("exception", "Error fetching product", product_id=product_id, error=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
         conn.close()
+
 
 @app.route("/products", methods=["POST"])
 def add_product():
@@ -157,7 +132,6 @@ def add_product():
     quantity = data.get("quantity", 0)
 
     if not name or price is None:
-        log_event("warning", "Missing name or price in POST /products", payload=data)
         return jsonify({"error": "Name and price are required"}), 400
 
     conn = get_db_connection()
@@ -173,18 +147,22 @@ def add_product():
         """, (name, description, price, quantity))
         conn.commit()
         product_id = cur.fetchone()[0]
-        log_event("info", "Product added", product_id=product_id, name=name)
         return jsonify({"message": "Product added successfully!", "id": product_id}), 201
     except Exception as e:
-        log_event("exception", "Failed to add product", payload=data, error=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
         conn.close()
 
+
 @app.route("/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
     data = request.get_json()
+    name = data.get("name")
+    description = data.get("description")
+    price = data.get("price")
+    quantity = data.get("quantity")
+
     conn = get_db_connection()
     if not conn:
         return jsonify({"error": "Database connection failed"}), 500
@@ -193,23 +171,21 @@ def update_product(product_id):
         cur = conn.cursor()
         cur.execute("SELECT * FROM product WHERE id = %s;", (product_id,))
         if not cur.fetchone():
-            log_event("warning", "Product not found for update", product_id=product_id)
             return jsonify({"error": "Product not found"}), 404
 
         cur.execute("""
             UPDATE product
             SET name=%s, description=%s, price=%s, quantity=%s
             WHERE id=%s;
-        """, (data.get("name"), data.get("description"), data.get("price"), data.get("quantity"), product_id))
+        """, (name, description, price, quantity, product_id))
         conn.commit()
-        log_event("info", "Product updated", product_id=product_id)
         return jsonify({"message": f"Product {product_id} updated successfully!"})
     except Exception as e:
-        log_event("exception", "Failed to update product", product_id=product_id, payload=data, error=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
         conn.close()
+
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
@@ -221,15 +197,12 @@ def delete_product(product_id):
         cur = conn.cursor()
         cur.execute("SELECT * FROM product WHERE id = %s;", (product_id,))
         if not cur.fetchone():
-            log_event("warning", "Product not found for delete", product_id=product_id)
             return jsonify({"error": "Product not found"}), 404
 
         cur.execute("DELETE FROM product WHERE id = %s;", (product_id,))
         conn.commit()
-        log_event("info", "Product deleted", product_id=product_id)
         return jsonify({"message": f"Product {product_id} deleted successfully!"})
     except Exception as e:
-        log_event("exception", "Failed to delete product", product_id=product_id, error=str(e))
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()
@@ -239,12 +212,13 @@ def delete_product(product_id):
 # Start the App
 # -----------------------
 if __name__ == "__main__":
-    log_event("info", "Starting Flask API and verifying DB connection")
+    app.logger.info("Starting Flask API and testing Cloud SQL connection...")
     conn = get_db_connection()
     if conn:
         conn.close()
-        log_event("info", "✅ Cloud SQL connection verified")
+        app.logger.info("✅ Cloud SQL connection verified successfully!")
 
+    # Auto-create table
     create_table_if_not_exists()
 
     port = int(os.getenv("PORT", 8080))
