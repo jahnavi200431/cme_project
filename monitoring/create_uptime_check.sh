@@ -1,25 +1,23 @@
-#!/bin/bash
+#!/usr/bin/env bash
 set -euo pipefail
 
-# Default config (can be overridden with flags)
+# Defaults (can be overridden via flags)
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
 API_HOST="34.133.250.137"
 ENDPOINTS=("/products" "/products/1")
-CHECK_PERIOD="5"  # minutes
-TIMEOUT="10"      # seconds
+CHECK_PERIOD="5"
+TIMEOUT="10"
 NAME_PREFIX="gke-rest-api"
 NOTIFICATION_CHANNEL=""
 
 usage() {
   cat <<EOF
 Usage: $0 [--project PROJECT_ID] [--host HOST] [--paths "/a,/b"] [--name-prefix PREFIX] [--notification-channel CHANNEL_RESOURCE] [--period MINUTES] [--timeout SECONDS] [--email EMAIL]
-If --notification-channel is not provided the script will create an email channel using --email.
 EOF
   exit 1
 }
 
-# Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) PROJECT_ID="$2"; shift 2;;
@@ -38,7 +36,6 @@ done
 echo "Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
-# Create or reuse notification channel
 if [[ -n "$NOTIFICATION_CHANNEL" ]]; then
   CHANNEL_ID="$NOTIFICATION_CHANNEL"
   echo "Using provided notification channel: $CHANNEL_ID"
@@ -52,17 +49,16 @@ else
   echo "Notification Channel ID: $CHANNEL_ID"
 fi
 
-# Create uptime checks and alert policies
 for PATH in "${ENDPOINTS[@]}"; do
-  # sanitize path without external tools:
+  # sanitize path WITHOUT external tools (no tr)
   trimmed="${PATH#/}"             # remove leading slash
-  sanitized="${trimmed//\//-}"    # replace any remaining slashes with hyphens
+  sanitized="${trimmed//\//-}"    # replace slashes with hyphens
   if [[ -z "$sanitized" ]]; then
     sanitized="root"
   fi
 
   CHECK_NAME="${NAME_PREFIX}-${sanitized}"
-  echo "Creating uptime check for endpoint '$PATH' (check name: $CHECK_NAME) ..."
+  echo "Creating uptime check for endpoint '$PATH' (check name: $CHECK_NAME)..."
 
   UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
     --synthetic-target=http \
@@ -99,7 +95,7 @@ for PATH in "${ENDPOINTS[@]}"; do
 }
 EOF
 
-  echo "Creating alert policy for $PATH from $POLICY_FILE ..."
+  echo "Creating alert policy for $PATH from $POLICY_FILE..."
   gcloud alpha monitoring policies create --policy-from-file="$POLICY_FILE"
   echo "Alert policy created for $PATH."
 done
