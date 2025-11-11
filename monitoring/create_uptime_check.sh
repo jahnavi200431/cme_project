@@ -1,18 +1,16 @@
 #!/bin/bash
+set -euo pipefail
 
-# === CONFIG ===
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
-API_HOST="${API_HOST:-34.133.250.137}"  # LoadBalancer IP passed as env or default
-ENDPOINTS=("/products" "/products/1")   # Add more endpoints if needed
-CHECK_PERIOD="5"                        # in minutes
-TIMEOUT="10"                            # in seconds
+API_HOST="${API_HOST:-34.133.250.137}"  # LoadBalancer IP
+ENDPOINTS=("/products" "/products/1")
+CHECK_PERIOD="5"
+TIMEOUT="10"
 
-# === 1. Set GCP project ===
 echo "Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
-# === 2. Create Notification Channel ===
 echo "Creating notification channel..."
 CHANNEL_ID=$(gcloud alpha monitoring channels create \
   --type=email \
@@ -21,10 +19,9 @@ CHANNEL_ID=$(gcloud alpha monitoring channels create \
   --format="value(name)")
 echo "Notification Channel ID: $CHANNEL_ID"
 
-# === 3. Create Uptime Checks & Alert Policies ===
 for PATH in "${ENDPOINTS[@]}"; do
-    # Replace slashes with dashes for resource-friendly name
-    CHECK_NAME="gke-rest-api-${PATH//\//-}"
+    # Replace slashes with dashes safely
+    CHECK_NAME=$(echo "gke-rest-api-$PATH" | sed 's#/#-#g')
     echo "Creating uptime check for endpoint $PATH ..."
 
     UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
@@ -38,7 +35,6 @@ for PATH in "${ENDPOINTS[@]}"; do
 
     echo "Uptime Check created: $UPTIME_CHECK_ID"
 
-    # Create alert policy JSON inline
     POLICY_FILE="policy-${CHECK_NAME}.json"
     cat > "$POLICY_FILE" <<EOF
 {
@@ -63,7 +59,6 @@ for PATH in "${ENDPOINTS[@]}"; do
 }
 EOF
 
-    echo "Creating alert policy for $PATH ..."
     gcloud alpha monitoring policies create --policy-from-file=policy.json
     echo "Alert policy created for $PATH."
 done
