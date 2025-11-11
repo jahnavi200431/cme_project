@@ -25,34 +25,33 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          # TEMP DEBUG: override DB settings to avoid startup crash
           env:
-            - name: GOOGLE_CLOUD_PROJECT
-              value: "my-project-app-477009"
-            - name: LOG_LEVEL
-              value: "info"
             - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
+              value: "127.0.0.1"   # local unreachable DB so app doesn't crash immediately
             - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
+              value: "debugdb"
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
+              value: "debug"
             - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
+              value: "debug"
             - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
+              value: "5432"
+          # Optional: temporary sleep to keep container alive for testing
+          command: ["sh", "-c", "echo 'Starting debug container'; sleep 3600"]
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-rest-api-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: gke-rest-api
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+
 
