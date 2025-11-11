@@ -12,6 +12,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
+      # keep one new pod available while updating, and don't take any down at once
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -21,52 +22,41 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
+          # default image in manifest; pipeline will update image via kubectl set image
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
             - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
+              value: "136.115.254.71"
             - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
+              value: "productdb"
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
+              value: "postgres"
             - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
+              value: "postgres"
             - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
-          # ✅ Liveness probe to check container health
-          livenessProbe:
-            httpGet:
-              path: /healthz
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 15
-            failureThreshold: 3
-          # ✅ Readiness probe to ensure pod is ready for traffic
+              value: "5432"
+          # Readiness probe: prevents routing traffic to the pod until the app responds
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /products
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
-
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 6
+          # Liveness probe: restarts the container if it becomes unhealthy
+          livenessProbe:
+            httpGet:
+              path: /products
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
