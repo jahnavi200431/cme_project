@@ -1,15 +1,14 @@
 #!/bin/bash
-set -euo pipefail
 
 # === CONFIG ===
-PROJECT_ID="${PROJECT_ID:-my-project-app-477009}"
-EMAIL="${EMAIL:-mallelajahnavi123@gmail.com}"
-API_HOST="${API_HOST:-127.0.0.1}"          # LoadBalancer IP; passed as env
-ENDPOINTS=("/products" "/products/1")      # Add more endpoints if needed
-CHECK_PERIOD="5"                           # minutes
-TIMEOUT="10"                               # seconds
+PROJECT_ID="my-project-app-477009"
+EMAIL="mallelajahnavi123@gmail.com"
+API_HOST="${API_HOST:-34.133.250.137}"  # LoadBalancer IP passed as env or default
+ENDPOINTS=("/products" "/products/1")   # Add more endpoints if needed
+CHECK_PERIOD="5"                        # in minutes
+TIMEOUT="10"                            # in seconds
 
-# === 1. Set project ===
+# === 1. Set GCP project ===
 echo "Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
@@ -20,16 +19,14 @@ CHANNEL_ID=$(gcloud alpha monitoring channels create \
   --display-name="API Uptime Email Alerts" \
   --channel-labels=email_address="$EMAIL" \
   --format="value(name)")
-
 echo "Notification Channel ID: $CHANNEL_ID"
 
-# === 3. Create Uptime Checks and Alert Policies ===
+# === 3. Create Uptime Checks & Alert Policies ===
 for PATH in "${ENDPOINTS[@]}"; do
-    # Replace / with - for valid resource names
+    # Replace slashes with dashes for resource-friendly name
     CHECK_NAME="gke-rest-api-${PATH//\//-}"
     echo "Creating uptime check for endpoint $PATH ..."
 
-    # Create the uptime check
     UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
         --synthetic-target=http \
         --host="$API_HOST" \
@@ -41,7 +38,7 @@ for PATH in "${ENDPOINTS[@]}"; do
 
     echo "Uptime Check created: $UPTIME_CHECK_ID"
 
-    # Create alert policy JSON directly
+    # Create alert policy JSON inline
     POLICY_FILE="policy-${CHECK_NAME}.json"
     cat > "$POLICY_FILE" <<EOF
 {
@@ -56,7 +53,9 @@ for PATH in "${ENDPOINTS[@]}"; do
         "comparison": "COMPARISON_LT",
         "thresholdValue": 1,
         "duration": "0s",
-        "trigger": { "count": 1 }
+        "trigger": {
+          "count": 1
+        }
       }
     }
   ],
