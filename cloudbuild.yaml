@@ -159,7 +159,7 @@ steps:
           --host="$$LB_IP" \
           --paths="/products,/health,/metrics" \
           --name-prefix="gke-rest-api" \
-          --notification-channel="projects/my-project-app-477009/notificationChannels/12064618237516244045"
+          --notification-channel="projects/my-project-app-477009/notificationChannels/1434793113408835929"
 
 images:
   - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
