@@ -28,16 +28,30 @@ spec:
           # TEMP DEBUG: override DB settings to avoid startup crash
           env:
             - name: DB_HOST
-              value: "127.0.0.1"   # local unreachable DB so app doesn't crash immediately
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_HOST
             - name: DB_NAME
-              value: "debugdb"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_NAME
             - name: DB_USER
-              value: "debug"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USER
             - name: DB_PASS
-              value: "debug"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASS
             - name: DB_PORT
-              value: "5432"
-          # Optional: temporary sleep to keep container alive for testing
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PORT
           command: ["sh", "-c", "echo 'Starting debug container'; sleep 3600"]
 
 ---
