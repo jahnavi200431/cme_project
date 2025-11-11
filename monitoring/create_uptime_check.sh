@@ -1,16 +1,16 @@
 #!/bin/bash
-set -e
+set -e  # Exit on any error
 
 # === CONFIG ===
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
-API_HOST="34.133.250.137"          # Your LoadBalancer IP
+API_HOST="34.133.250.137"      # Your LoadBalancer IP
 ENDPOINTS=("/products" "/products/1")  # Add more endpoints if needed
-CHECK_PERIOD="5m"                  # in minutes, gcloud expects "5m" format
-TIMEOUT="10s"                       # in seconds, gcloud expects "10s" format
+CHECK_PERIOD="5m"               # Uptime check period
+TIMEOUT="10s"                   # Timeout per check
 
 # === 1. Set project ===
-echo "Setting project..."
+echo "Setting GCP project..."
 gcloud config set project "$PROJECT_ID"
 
 # === 2. Create Notification Channel ===
@@ -28,7 +28,7 @@ for PATH in "${ENDPOINTS[@]}"; do
     CHECK_NAME="gke-rest-api-$(echo "$PATH" | tr '/' '-')"
     echo "Creating uptime check for endpoint $PATH ..."
 
-    # Create Uptime Check
+    # Create uptime check
     UPTIME_CHECK_ID=$(gcloud monitoring uptime create "$CHECK_NAME" \
         --synthetic-target=http \
         --host="$API_HOST" \
@@ -40,7 +40,7 @@ for PATH in "${ENDPOINTS[@]}"; do
 
     echo "Uptime Check created: $UPTIME_CHECK_ID"
 
-    # Create Alert Policy JSON
+    # Prepare alert policy JSON
     POLICY_FILE="policy-${CHECK_NAME}.json"
     cat > "$POLICY_FILE" <<EOF
 {
@@ -65,7 +65,6 @@ for PATH in "${ENDPOINTS[@]}"; do
 }
 EOF
 
-    # Create Alert Policy in GCP
     echo "Creating alert policy for $PATH ..."
     gcloud alpha monitoring policies create --policy-from-file="$POLICY_FILE"
     echo "Alert policy created for $PATH."
