@@ -12,6 +12,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
+      # keep one new pod available while updating, and don't take any down at once
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -21,22 +22,56 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
+          # default image in manifest; pipeline will update image via kubectl set image
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
           env:
             - name: DB_HOST
-              value: "136.115.254.71"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_HOST
             - name: DB_NAME
-              value: "productdb"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_NAME
             - name: DB_USER
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USER
             - name: DB_PASS
-              value: "postgres"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASS
             - name: DB_PORT
-              value: "5432"
-
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PORT
+          # Readiness probe: prevents routing traffic to the pod until the app responds
+          readinessProbe:
+            httpGet:
+              path: /products
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+            successThreshold: 1
+            failureThreshold: 6
+          # Liveness probe: restarts the container if it becomes unhealthy
+          livenessProbe:
+            httpGet:
+              path: /products
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
@@ -46,8 +81,4 @@ spec:
   type: LoadBalancer
   selector:
     app: gke-rest-api
-  ports:
-    - protocol: TCP
-      port: 80
-      targetPort: 8080
 
