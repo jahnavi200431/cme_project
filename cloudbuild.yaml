@@ -157,7 +157,7 @@ steps:
         ./monitoring/create_uptime_check.sh \
           --project=my-project-app-477009 \
           --host="$$LB_IP" \
-          --paths="/products,/health,/metrics" \
+          --paths="/products" \
           --name-prefix="gke-rest-api" \
           --notification-channel="projects/my-project-app-477009/notificationChannels/1434793113408835929"
 
