@@ -4,22 +4,22 @@ set -euo pipefail
 # Default config (can be overridden with flags)
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
-API_HOST="34.133.250.137"      # default LB IP
+API_HOST="34.133.250.137"
 ENDPOINTS=("/products" "/products/1")
-CHECK_PERIOD="5"               # minutes
-TIMEOUT="10"                   # seconds
+CHECK_PERIOD="5"  # minutes
+TIMEOUT="10"      # seconds
 NAME_PREFIX="gke-rest-api"
-NOTIFICATION_CHANNEL=""        # if provided as full resource, will be used directly
+NOTIFICATION_CHANNEL=""
 
 usage() {
   cat <<EOF
-Usage: $0 [--project PROJECT_ID] [--host HOST] [--paths \"/a,/b\"] [--name-prefix PREFIX] [--notification-channel CHANNEL_RESOURCE] [--period MINUTES] [--timeout SECONDS] [--email EMAIL]
+Usage: $0 [--project PROJECT_ID] [--host HOST] [--paths "/a,/b"] [--name-prefix PREFIX] [--notification-channel CHANNEL_RESOURCE] [--period MINUTES] [--timeout SECONDS] [--email EMAIL]
 If --notification-channel is not provided the script will create an email channel using --email.
 EOF
   exit 1
 }
 
-# Simple arg parsing
+# Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --project) PROJECT_ID="$2"; shift 2;;
@@ -54,10 +54,9 @@ fi
 
 # Create uptime checks and alert policies
 for PATH in "${ENDPOINTS[@]}"; do
-  # normalize path: remove leading slash, replace remaining slashes with hyphens
-  trimmed="${PATH#/}"
-  sanitized="${trimmed//\//-}"
-  # if path was just "/" then trimmed becomes empty; handle that
+  # sanitize path without external tools:
+  trimmed="${PATH#/}"             # remove leading slash
+  sanitized="${trimmed//\//-}"    # replace any remaining slashes with hyphens
   if [[ -z "$sanitized" ]]; then
     sanitized="root"
   fi
@@ -76,7 +75,6 @@ for PATH in "${ENDPOINTS[@]}"; do
 
   echo "Uptime Check created: $UPTIME_CHECK_ID"
 
-  # Write Alert Policy JSON
   POLICY_FILE="policy-${CHECK_NAME}.json"
   cat > "$POLICY_FILE" <<EOF
 {
