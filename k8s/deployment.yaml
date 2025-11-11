@@ -12,7 +12,6 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      # keep one new pod available while updating, and don't take any down at once
       maxSurge: 1
       maxUnavailable: 0
   template:
@@ -22,7 +21,6 @@ spec:
     spec:
       containers:
         - name: gke-rest-api
-          # default image in manifest; pipeline will update image via kubectl set image
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           imagePullPolicy: Always
           ports:
@@ -38,25 +36,7 @@ spec:
               value: "postgres"
             - name: DB_PORT
               value: "5432"
-          # Readiness probe: prevents routing traffic to the pod until the app responds
-          readinessProbe:
-            httpGet:
-              path: /products
-              port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 10
-            timeoutSeconds: 3
-            successThreshold: 1
-            failureThreshold: 6
-          # Liveness probe: restarts the container if it becomes unhealthy
-          livenessProbe:
-            httpGet:
-              path: /products
-              port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 20
-            timeoutSeconds: 3
-            failureThreshold: 3
+
 ---
 apiVersion: v1
 kind: Service
@@ -70,3 +50,4 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8080
+
