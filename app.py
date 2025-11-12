@@ -9,7 +9,7 @@ app = Flask(__name__)
 
 # --------------------------------------------------------
 # ✅ Structured JSON Logging Configuration
-# --------------------------------------------------------
+# -------------------------------------------------------
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
