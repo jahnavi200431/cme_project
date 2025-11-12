@@ -51,6 +51,13 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PORT
+           resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"       
           # Readiness probe: controls traffic routing
           readinessProbe:
             tcpSocket:
