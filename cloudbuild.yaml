@@ -64,7 +64,7 @@ steps:
 
         echo "🔍 Running post-deployment checks..."
 
-        LB_IP="34.133.250.137"
+        LB_IP="35.194.57.226"
         MAX_RETRIES=12
         RETRY=0
 
