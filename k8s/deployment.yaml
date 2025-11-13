@@ -19,7 +19,7 @@ spec:
         - containerPort: 8080
         env:
         - name: DB_HOST
-          value: 127.0.0.1
+          value: 35.194.2.254
         - name: DB_NAME
           value: productdb
         - name: DB_USER
