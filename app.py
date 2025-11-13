@@ -84,7 +84,7 @@ def readiness():
 # ✅ Database Configuration
 # --------------------------------------------------------
 
-<<<<<<< HEAD
+
 DB_HOST = os.getenv("DB_HOST", "35.194.2.254")
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
