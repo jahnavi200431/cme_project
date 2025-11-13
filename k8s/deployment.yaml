@@ -2,77 +2,49 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gke-rest-api
-  labels:
-    app: gke-rest-api
 spec:
   replicas: 2
   selector:
     matchLabels:
       app: gke-rest-api
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   template:
     metadata:
       labels:
         app: gke-rest-api
     spec:
       containers:
-        - name: gke-rest-api
-          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
-          env:
-            - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
-            - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
-            - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
-            - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
-          resources:
-            requests:
-              cpu: "200m"
-              memory: "256Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 5
-            failureThreshold: 6
-
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 20
-            periodSeconds: 10
-            failureThreshold: 3
+      - name: gke-rest-api
+        image: gcr.io/YOUR_PROJECT_ID/gke-rest-api:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DB_HOST
+          value: 127.0.0.1
+        - name: DB_NAME
+          value: productdb
+        - name: DB_USER
+          value: postgres
+        - name: DB_PASS
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: DB_PASS
+        - name: DB_PORT
+          value: "5432"
+      - name: cloud-sql-proxy
+        image: gcr.io/cloudsql-docker/gce-proxy:1.33.2
+        command:
+          - /cloud_sql_proxy
+          - -instances=YOUR_PROJECT_ID:YOUR_REGION:YOUR_INSTANCE_NAME=tcp:5432
+          - -credential_file=/secrets/cloudsql/credentials.json
+        volumeMounts:
+        - name: cloudsql-instance-credentials
+          mountPath: /secrets/cloudsql
+          readOnly: true
+      volumes:
+      - name: cloudsql-instance-credentials
+        secret:
+          secretName: cloudsql-instance-credentials
 ---
 apiVersion: v1
 kind: Service
