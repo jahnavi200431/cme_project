@@ -86,9 +86,6 @@ def readiness():
 
 <<<<<<< HEAD
 DB_HOST = os.getenv("DB_HOST", "35.194.2.254")
-=======
-DB_HOST = os.getenv("DB_HOST", "136.115.254.71")
->>>>>>> 6feece35b9d84496ec17197dd09b19e869c76c66
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
 DB_PASS = os.getenv("DB_PASS", "postgres")
