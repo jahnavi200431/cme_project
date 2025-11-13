@@ -44,7 +44,7 @@ spec:
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
-                  name: db-credentials
+                  name: db-secret
                   key: DB_PASS
             - name: DB_PORT
               valueFrom:
