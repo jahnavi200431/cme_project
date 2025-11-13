@@ -1,0 +1,8 @@
+apiVersion: sql.cnrm.cloud.google.com/v1beta1
+kind: SQLDatabase
+metadata:
+  name: productdb
+  namespace: default
+spec:
+  instanceRef:
+    name: product-db-instance

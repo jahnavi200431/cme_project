@@ -1,0 +1,15 @@
+apiVersion: sql.cnrm.cloud.google.com/v1beta1
+kind: SQLInstance
+metadata:
+  name: product-db-instance
+  namespace: default
+spec:
+  databaseVersion: POSTGRES_14
+  region: us-central1
+  settings:
+    tier: db-custom-1-3840
+    ipConfiguration:
+      ipv4Enabled: true
+      privateNetworkRef:
+        external: projects/my-project-app-477009/global/networks/default
+      requireSsl: true

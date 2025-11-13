@@ -1,0 +1,6 @@
+apiVersion: core.cnrm.cloud.google.com/v1beta1
+kind: ConfigConnectorContext
+metadata:
+  name: configconnectorcontext
+spec:
+  googleServiceAccount: 433503387155-compute@developer.gserviceaccount.com
