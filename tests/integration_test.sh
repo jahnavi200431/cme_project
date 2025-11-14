@@ -1,14 +1,4 @@
-#!/usr/bin/env bash
-# Extended integration tests for gke-rest-api service.
-# Expects LB environment variable set to the LoadBalancer IP (LB).
-# Tests:
-#  - GET /products
-#  - POST /products (create)
-#  - GET /products/{id}
-#  - PUT /products/{id} (update)
-#  - DELETE /products/{id}
-#
-# The script exits non-zero on failure and prints helpful diagnostics.
+
 
 set -euo pipefail
 
@@ -26,8 +16,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Helper: send request and return body and http status
-# Args: method path [data-json]
+
 request() {
   local method="$1"; shift
   local path="$1"; shift
@@ -48,11 +37,11 @@ request() {
   return 0
 }
 
-# Helper: extract status/body from TMPDIR
+
 get_status() { cat "$TMPDIR/status"; }
 get_body() { cat "$TMPDIR/body"; }
 
-# Helper: extract id from JSON body (try jq, then regex)
+
 extract_id() {
   local body
   body="$(get_body)"
@@ -69,11 +58,11 @@ extract_id() {
     fi
   fi
 
-  # Ensure we return empty string rather than causing unbound variable later
+  
   echo "${id:-}"
 }
 
-# 1) GET /products
+
 echo "1) GET /products -> expecting HTTP 200"
 request GET /products
 status=$(get_status)
@@ -85,7 +74,7 @@ if [ "$status" != "200" ]; then
 fi
 echo "OK: GET /products returned 200"
 
-# 2) POST /products (create)
+
 echo "2) POST /products -> creating a test product"
 UNIQUE="$(date +%s)-$RANDOM"
 payload=$(cat <<EOF
@@ -120,7 +109,7 @@ fi
 
 echo "OK: Created product id = $product_id"
 
-# 3) GET /products/{id}
+
 echo "3) GET /products/$product_id -> expecting HTTP 200 and matching name"
 request GET "/products/$product_id"
 get_id_status=$(get_status)
@@ -131,14 +120,14 @@ if [ "$get_id_status" != "200" ]; then
   exit 1
 fi
 
-# quick sanity: ensure name string present
+
 if ! echo "$get_id_body" | grep -q "integration-test-product"; then
   echo "WARN: GET /products/$product_id body does not contain expected name. Body:"
   echo "$get_id_body"
 fi
 echo "OK: GET /products/$product_id returned 200"
 
-# 4) PUT /products/{id} (update)
+
 echo "4) PUT /products/$product_id -> updating product name"
 updated_payload=$(cat <<EOF
 {
@@ -158,7 +147,7 @@ if [ "$put_status" != "200" ] && [ "$put_status" != "204" ]; then
   exit 1
 fi
 
-# If PUT returned 204 (no body), perform a GET to verify update
+
 request GET "/products/$product_id"
 verify_status=$(get_status)
 verify_body=$(get_body)
@@ -175,7 +164,7 @@ if ! echo "$verify_body" | grep -q "updated"; then
 fi
 echo "OK: Product updated and verified"
 
-# 5) DELETE /products/{id}
+
 echo "5) DELETE /products/$product_id -> deleting product"
 request DELETE "/products/$product_id"
 del_status=$(get_status)
@@ -187,7 +176,7 @@ if [ "$del_status" != "200" ] && [ "$del_status" != "204" ] && [ "$del_status" !
   exit 1
 fi
 
-# Verify deletion: GET should return 404 (or 410) or not found
+
 request GET "/products/$product_id"
 post_del_status=$(get_status)
 post_del_body=$(get_body)
