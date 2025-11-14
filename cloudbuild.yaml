@@ -35,7 +35,7 @@ steps:
     args:
       - '-c'
       - |
-        echo "📦 Starting deployment to GKE..."
+        echo " Starting deployment to GKE..."
 
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
@@ -44,12 +44,12 @@ steps:
         echo "🔧 Updating image reference..."
         sed -i.bak "s|\(image:[[:space:]]*\).*|\1us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
 
-        echo "🚀 Applying Kubernetes manifests..."
+        echo " Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
 
-        echo "⏳ Waiting for rollout..."
-        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo "⚠️ Rollout timeout" && kubectl get pods -o wide && exit 1)
+        echo " Waiting for rollout..."
+        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo " Rollout timeout" && kubectl get pods -o wide && exit 1)
 
   # ----------------------------------------------------------------------------
   # 4) Post-deployment checks & integration tests
@@ -62,7 +62,7 @@ steps:
       - |
         set -euo pipefail
 
-        echo "🔍 Running post-deployment checks..."
+        echo " Running post-deployment checks..."
 
         LB_IP="34.135.35.113"
         MAX_RETRIES=12
@@ -76,7 +76,7 @@ steps:
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo "❌ LoadBalancer IP not found. Diagnosing..."
+          echo " LoadBalancer IP not found. Diagnosing..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
@@ -85,21 +85,21 @@ steps:
           exit 1
         fi
 
-        echo "✅ LoadBalancer IP resolved: $$LB_IP"
+        echo " LoadBalancer IP resolved: $$LB_IP"
 
         echo "⏳ Checking /products endpoint..."
         for i in $$(seq 1 8); do
           http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
           echo "Attempt $$i: HTTP $$http_status"
           if [ "$$http_status" = "200" ]; then
-            echo "✅ /products returned 200 OK"
+            echo " /products returned 200 OK"
             break
           fi
           sleep 5
         done
 
         if [ "$$http_status" != "200" ]; then
-          echo "❌ /products endpoint failing."
+          echo " /products endpoint failing."
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
           kubectl describe svc gke-rest-api-service || true
@@ -107,11 +107,11 @@ steps:
           exit 1
         fi
 
-        echo "🧪 Running integration tests..."
+        echo " Running integration tests..."
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
 
-        echo "✅ Integration tests passed."
+        echo " Integration tests passed."
 
   # ----------------------------------------------------------------------------
   # 5) Synthetic uptime checks
@@ -129,7 +129,7 @@ steps:
           exit 0
         fi
 
-        echo "🔔 Creating synthetic uptime checks..."
+        echo " Creating synthetic uptime checks..."
 
         LB_IP="34.135.35.113:80"
 
