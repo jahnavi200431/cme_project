@@ -1,12 +1,8 @@
-#!/usr/bin/env bash
+
 set -euo pipefail
 
-# -------------------------------------------------------------------------------------
-# This script does NOT create new uptime checks — it only uses existing uptime check IDs
-# to create alert policies in Google Cloud Monitoring.
-# -------------------------------------------------------------------------------------
 
-# Default values
+
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
 API_HOST="34.133.250.137"
@@ -37,7 +33,7 @@ EOF
   exit 1
 }
 
-# --- Argument Parser (supports --flag=value or --flag value) ---
+
 while [[ $# -gt 0 ]]; do
   arg="$1"
   case "$arg" in
@@ -76,7 +72,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# --- Validate Inputs ---
+
 if [[ -z "$PROJECT_ID" ]]; then
   echo "ERROR: Missing --project argument."
   usage
@@ -98,7 +94,7 @@ if [[ -z "$EXISTING_CHECK_ID" && -z "$EXISTING_CHECKS" ]]; then
   exit 1
 fi
 
-# --- Parse existing checks mapping ---
+
 declare -A EXISTING_MAP
 if [[ -n "$EXISTING_CHECKS" ]]; then
   OLDIFS="$IFS"
@@ -115,11 +111,11 @@ if [[ -n "$EXISTING_CHECKS" ]]; then
   IFS="$OLDIFS"
 fi
 
-# --- Set GCP Project ---
+
 echo "Setting GCP project to: $PROJECT_ID ..."
 gcloud config set project "$PROJECT_ID"
 
-# --- Create or use existing notification channel ---
+
 if [[ -n "$NOTIFICATION_CHANNEL" ]]; then
   CHANNEL_ID="$NOTIFICATION_CHANNEL"
   echo "Using provided notification channel: $CHANNEL_ID"
@@ -133,7 +129,7 @@ else
   echo "Notification Channel ID: $CHANNEL_ID"
 fi
 
-# --- Create alert policies for each path ---
+
 for PATH in "${ENDPOINTS[@]}"; do
   trimmed="${PATH#/}"
   sanitized="${trimmed//\//-}"
@@ -142,7 +138,7 @@ for PATH in "${ENDPOINTS[@]}"; do
 
   echo "Preparing alert policy for endpoint '$PATH'..."
 
-  # Determine which uptime check ID to use
+  
   if [[ -n "${EXISTING_MAP[$PATH]:-}" ]]; then
     UPTIME_CHECK_ID="${EXISTING_MAP[$PATH]}"
     echo "Using mapped check ID for $PATH -> $UPTIME_CHECK_ID"
@@ -178,7 +174,7 @@ EOF
 
   echo "Creating alert policy for $PATH..."
   gcloud alpha monitoring policies create --policy-from-file="$POLICY_FILE"
-  echo "✅ Alert policy created for $PATH"
+  echo " Alert policy created for $PATH"
 done
 
-echo "🎉 All alert policies created successfully using existing uptime checks."
+echo " All alert policies created successfully using existing uptime checks."
