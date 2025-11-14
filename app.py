@@ -7,9 +7,7 @@ import json
 
 app = Flask(__name__)
 
-# -------------------------------------------------------
-# ✅ Structured JSON Logging Configuration
-# ------------------------------------------------------
+
 
 class JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -32,9 +30,7 @@ logger.handlers = [json_handler]
 logging.getLogger("werkzeug").disabled = True
 
 
-# --------------------------------------------------------
-# ✅ Log Request/Response Events
-# --------------------------------------------------------
+
 
 @app.before_request
 def log_request():
@@ -57,9 +53,7 @@ def log_response(response):
     return response
 
 
-# --------------------------------------------------------
-# ✅ Health Check Endpoints
-# --------------------------------------------------------
+
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -80,9 +74,7 @@ def readiness():
     return {"status": "not ready"}, 500
 
 
-# --------------------------------------------------------
-# ✅ Database Configuration
-# --------------------------------------------------------
+
 
 
 DB_HOST = os.getenv("DB_HOST", "35.194.2.254")
@@ -110,9 +102,7 @@ def get_db_connection(check_only=False):
         return None
 
 
-# --------------------------------------------------------
-# ✅ Create Table If Not Exists
-# --------------------------------------------------------
+
 
 def create_table_if_not_exists():
     conn = get_db_connection()
@@ -143,9 +133,7 @@ def create_table_if_not_exists():
         conn.close()
 
 
-# --------------------------------------------------------
-# ✅ REST API Routes
-# --------------------------------------------------------
+
 
 @app.route("/")
 def home():
@@ -281,9 +269,7 @@ def delete_product(product_id):
         conn.close()
 
 
-# --------------------------------------------------------
-# ✅ Start Server
-# --------------------------------------------------------
+
 
 if __name__ == "__main__":
     logger.info(json.dumps({"event": "starting_server"}))
