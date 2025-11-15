@@ -26,7 +26,7 @@ steps:
 
         echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
-
+        
 
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
