@@ -6,6 +6,11 @@ metadata:
     app: gke-rest-api
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: gke-rest-api
@@ -19,6 +24,31 @@ spec:
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
             - containerPort: 8080
+
+          # Readiness and Liveness Probes
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          # Resource limits (recommended)
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # Environment Variables from Secret
           env:
             - name: DB_HOST
               valueFrom:
@@ -48,7 +78,7 @@ spec:
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: db-credentials   # FIXED
+                  name: db-credentials
                   key: API_KEY
 ---
 apiVersion: v1
@@ -60,5 +90,7 @@ spec:
   selector:
     app: gke-rest-api
   ports:
-    - port: 80
+    - name: http
+      port: 80
+      protocol: TCP
       targetPort: 8080
