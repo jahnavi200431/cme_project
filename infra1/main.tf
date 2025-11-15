@@ -5,7 +5,7 @@ provider "google" {
 }
 
 # -------------------
-# Create GKE Cluster
+# Create GKE Cluste
 # -------------------
 resource "google_container_cluster" "gke" {
   name     = "product-gke-cluster"
