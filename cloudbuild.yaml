@@ -8,7 +8,7 @@ substitutions:
   _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
 
 steps:
-  # ----------------------------------------------------------
+  # ---------------------------------------------------------
   # 1) Install Terraform
   # ----------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
