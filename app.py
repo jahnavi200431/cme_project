@@ -140,7 +140,7 @@ def home():
     })
 
 
-@app.route("/products2", methods=["GET"])
+@app.route("/products", methods=["GET"])
 def get_products():
     conn = get_db_connection()
     if not conn:
