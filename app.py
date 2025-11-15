@@ -61,7 +61,7 @@ def health():
     return {"status": "healthy"}, 200
 
 
-@app.route('/ready1', methods=['GET'])
+@app.route('/ready', methods=['GET'])
 def readiness():
     # Check database readiness
     conn = get_db_connection(check_only=True)
@@ -142,7 +142,7 @@ def home():
     })
 
 
-@app.route("/products", methods=["GET"])
+@app.route("/products2", methods=["GET"])
 def get_products():
     conn = get_db_connection()
     if not conn:
