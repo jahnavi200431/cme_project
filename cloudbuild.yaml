@@ -95,7 +95,7 @@ steps:
 
         echo " Running post-deployment checks..."
 
-        LB_IP="34.70.93.48"
+        LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
         MAX_RETRIES=12
         RETRY=0
 
@@ -163,7 +163,7 @@ steps:
 
         echo " Creating synthetic uptime checks..."
 
-        LB_IP="34.70.93.48"
+        LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
 
         if [ -z "$$LB_IP" ]; then
           LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
