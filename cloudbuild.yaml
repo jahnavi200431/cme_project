@@ -68,7 +68,9 @@ steps:
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
-
+        echo "📦 Applying Kubernetes manifests..."
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
