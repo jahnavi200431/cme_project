@@ -50,7 +50,7 @@ resource "google_sql_database_instance" "postgres" {
       ipv4_enabled = true
       authorized_networks {
     name  = "any"
-    value = "0.0.0.0/0"
+    value = "34.42.255.232"
   }
     }
   }
