@@ -51,6 +51,11 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PORT
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: api-secret
+                  key: API_KEY      
           resources:
             requests:
               cpu: "200m"
