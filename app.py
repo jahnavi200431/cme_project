@@ -272,7 +272,14 @@ def delete_product(product_id):
 if __name__ == "__main__":
     logger.info(json.dumps({"event": "starting_server"}))
 
-    # Verify DB connectivity at startup
+    # ONLY initialize DB and exit if running in Cloud Build init step
+    if os.getenv("INIT_DB_ONLY") == "true":
+        logger.info(json.dumps({"event": "db_init_mode"}))
+        create_table_if_not_exists()
+        logger.info(json.dumps({"event": "db_init_complete"}))
+        sys.exit(0)   # IMPORTANT: do not start Flask server
+
+    # Normal startup (in GKE)
     conn = get_db_connection()
     if conn:
         conn.close()
@@ -282,3 +289,4 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
+
