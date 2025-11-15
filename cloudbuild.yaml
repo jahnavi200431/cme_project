@@ -82,7 +82,7 @@ steps:
 
         echo " Running post-deployment checks..."
 
-        LB_IP="34.172.89.29"
+        LB_IP="34.70.93.48"
         MAX_RETRIES=12
         RETRY=0
 
@@ -149,7 +149,7 @@ steps:
 
         echo " Creating synthetic uptime checks..."
 
-        LB_IP="34.135.35.113:80"
+        LB_IP="34.70.93.48"
 
         if [ -z "$$LB_IP" ]; then
           LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
