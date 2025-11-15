@@ -5,7 +5,7 @@ set -euo pipefail
 
 PROJECT_ID="my-project-app-477009"
 EMAIL="mallelajahnavi123@gmail.com"
-API_HOST="34.133.250.137"
+API_HOST="34.172.89.29"
 ENDPOINTS=("/products")
 CHECK_PERIOD="5"
 TIMEOUT="10"
