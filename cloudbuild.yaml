@@ -71,6 +71,7 @@ steps:
         echo "📦 Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
+        kubectl apply -f k8s/db-secret.yaml
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
