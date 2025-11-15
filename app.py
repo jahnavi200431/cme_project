@@ -7,8 +7,6 @@ import json
 
 app = Flask(__name__)
 
-
-
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
