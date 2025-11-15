@@ -7,6 +7,12 @@ if [ -z "${LB:-}" ]; then
   exit 2
 fi
 
+# Cloud Build must export API_KEY into environment!
+if [ -z "${API_KEY:-}" ]; then
+  echo "ERROR: API_KEY environment variable not set."
+  exit 2
+fi
+
 BASE_URL="http://$LB:80"
 echo "Integration tests target: $BASE_URL"
 
@@ -22,10 +28,13 @@ request() {
 
   local resp
   if [ -n "$data" ]; then
-    resp=$(curl -s -S -w "\n%{http_code}" -H "Content-Type: application/json" \
+    resp=$(curl -s -S -w "\n%{http_code}" \
+      -H "Content-Type: application/json" \
+      -H "X-API-KEY: $API_KEY" \
       -X "$method" "$BASE_URL$path" -d "$data" || true)
   else
     resp=$(curl -s -S -w "\n%{http_code}" \
+      -H "X-API-KEY: $API_KEY" \
       -X "$method" "$BASE_URL$path" || true)
   fi
 
