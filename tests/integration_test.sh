@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# Cloud Build passes LB via environment variable
+# Cloud Build passes LB via environment variabl
 if [ -z "${LB:-}" ]; then
   echo "ERROR: LB environment variable not set."
   exit 2
