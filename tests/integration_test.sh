@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-LB="34.70.93.48"
+LB=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
 if [ -z "$LB" ]; then
   echo "ERROR: LB environment variable not set. Provide the LoadBalancer IP via LB."
   exit 2
