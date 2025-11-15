@@ -5,41 +5,23 @@ serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-com
 
 steps:
   # ----------------------------------------------------------
-  # 0) Install Config Connector CRDs
+  # 1) Install Terraform
   # ----------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
-    id: "Install Config Connector"
-    entrypoint: bash
+  - name: hashicorp/terraform:1.6.6
+    entrypoint: "sh"
+    id: "Terraform Init & Apply"
     args:
       - "-c"
       - |
-        echo "🛠 Installing Config Connector CRDs..."
-        gcloud services enable anthos.googleapis.com
-        gcloud services enable cloudresourcemanager.googleapis.com
+        cd infra1
+        echo "🔧 Initializing Terraform..."
+        terraform init -input=false
 
-        gcloud container clusters get-credentials product-gke-cluster --region=us-central1-a
+        echo "📄 Planning Terraform..."
+        terraform plan -out=tfplan -input=false
 
-        kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-config-connector/main/install-bundle/operator/manifest.yaml
-
-        echo "⏳ Waiting 45 seconds for CRDs to register..."
-        sleep 45
-
-  # ----------------------------------------------------------
-  # 1) Apply INFRA manifests
-  # ----------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
-    id: "Apply Infra"
-    entrypoint: bash
-    args:
-      - "-c"
-      - |
-        echo "🔧 Applying Infra YAMLs..."
-        gcloud container clusters get-credentials product-gke-cluster --region=us-central1-a
-
-        kubectl apply -f infra/
-
-        echo "⏳ Waiting 40 seconds for infra resources..."
-        sleep 40
+        echo "🚀 Applying Terraform..."
+        terraform apply -input=false -auto-approve tfplan
 
   # ----------------------------------------------------------
   # 2) Push Docker image to Artifact Registry
