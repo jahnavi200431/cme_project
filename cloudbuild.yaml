@@ -27,6 +27,7 @@ steps:
         echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
 
+
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
   # ----------------------------------------------------------
@@ -40,8 +41,9 @@ steps:
         "."
       ]
 
+
   # ----------------------------------------------------------
-  # 3) Push Docker image to Artifact Registry
+  # 3) Push Docker Image
   # ----------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Push Docker Image"
@@ -50,6 +52,7 @@ steps:
         "push",
         "${_IMAGE}:${_TAG}"
       ]
+
 
   # ----------------------------------------------------------
   # 4) Deploy to GKE
@@ -68,8 +71,7 @@ steps:
 
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
-        kubectl set image deployment/gke-rest-api \
-          gke-rest-api=${_IMAGE}:${_TAG}
+        kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
 
         echo "⏳ Waiting for rollout..."
         kubectl rollout status deployment/gke-rest-api --timeout=120s || (
@@ -79,65 +81,114 @@ steps:
           exit 1
         )
 
+
   # ----------------------------------------------------------
   # 5) Post-deployment checks & integration tests
   # ----------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
-    id: "Post-Deployment Checks & Integration Tests"
-    entrypoint: "bash"
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Post-Deployment Checks & Integration Tests'
+    entrypoint: 'bash'
     args:
-      - "-c"
+      - '-c'
       - |
         set -euo pipefail
-        echo "🔍 Running post-deployment checks..."
 
-        echo "Fetching Load Balancer IP..."
-        LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+        echo " Running post-deployment checks..."
 
-        echo "LoadBalancer IP: $LB_IP"
+        LB_IP="34.135.35.113"
+        MAX_RETRIES=12
+        RETRY=0
 
-        echo "Checking /products endpoint..."
-        for i in $(seq 1 10); do
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "http://$LB_IP/products")
-          echo "Attempt $i → HTTP $STATUS"
-          [ "$STATUS" = "200" ] && echo "✔ Healthy" && break
-          sleep 5
+        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
+          sleep 10
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$$((RETRY+1))
         done
 
-        if [ "$STATUS" != "200" ]; then
-          echo "❌ /products endpoint failing"
-          kubectl get pods -l app=gke-rest-api -o wide
-          kubectl describe deployment gke-rest-api
+        if [ -z "$$LB_IP" ]; then
+          echo " LoadBalancer IP not found. Diagnosing..."
+          kubectl get svc gke-rest-api-service -o yaml || true
+          kubectl describe svc gke-rest-api-service || true
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
 
-        echo "🧪 Running integration tests..."
-        chmod +x tests/integration_test.sh
-        LB="$LB_IP" bash tests/integration_test.sh
-        echo "✔ Integration tests passed"
+        echo " LoadBalancer IP resolved: $$LB_IP"
+
+        echo "⏳ Checking /products endpoint..."
+        for i in $$(seq 1 8); do
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
+            echo " /products returned 200 OK"
+            break
+          fi
+          sleep 5
+        done
+
+        if [ "$$http_status" != "200" ]; then
+          echo " /products endpoint failing."
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
+          kubectl describe svc gke-rest-api-service || true
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+          exit 1
+        fi
+
+        echo " Running integration tests..."
+        chmod +x tests/integration_test.sh || true
+        LB="$$LB_IP" bash tests/integration_test.sh
+
+        echo " Integration tests passed."
+
 
   # ----------------------------------------------------------
   # 6) Synthetic uptime checks
   # ----------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
-    id: "Create Synthetic Uptime Checks"
-    entrypoint: "bash"
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Create Synthetic Uptime Checks'
+    entrypoint: 'bash'
     args:
-      - "-c"
+      - '-c'
       - |
         set -euo pipefail
+
         if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
           echo "Skipping uptime-check creation."
           exit 0
         fi
 
-        LB_IP=$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
-        echo "Using $LB_IP for uptime checks"
+        echo " Creating synthetic uptime checks..."
 
-        chmod +x monitoring/create_uptime_check.sh
+        LB_IP="34.135.35.113:80"
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          echo "LB IP not found; skipping uptime checks."
+          exit 0
+        fi
+
+        echo "Using host $$LB_IP for synthetic checks."
+
+        chmod +x monitoring/create_uptime_check.sh || true
+
         ./monitoring/create_uptime_check.sh \
           --project=my-project-app-477009 \
-          --host="$LB_IP" \
+          --host="$$LB_IP" \
           --paths="/products" \
           --name-prefix="gke-rest-api" \
           --notification-channel="projects/my-project-app-477009/notificationChannels/1434793113408835929"
