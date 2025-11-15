@@ -7,6 +7,9 @@ import json
 
 app = Flask(__name__)
 
+# ---------------------------
+# JSON STRUCTURED LOGGING
+# ---------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -24,12 +27,29 @@ logger = logging.getLogger("gke-rest-api")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-
 logging.getLogger("werkzeug").disabled = True
 
 
+# ---------------------------
+# API KEY AUTHENTICATION
+# ---------------------------
+API_KEY = os.getenv("API_KEY")  # comes from Kubernetes secret
+
+def require_api_key():
+    def wrapper(fn):
+        def protected(*args, **kwargs):
+            client_key = request.headers.get("X-API-KEY")
+            if not client_key or client_key != API_KEY:
+                return jsonify({"error": "Unauthorized"}), 401
+            return fn(*args, **kwargs)
+        protected.__name__ = fn.__name__
+        return protected
+    return wrapper
 
 
+# ---------------------------
+# LOGGING MIDDLEWARE
+# ---------------------------
 @app.before_request
 def log_request():
     logger.info(json.dumps({
@@ -51,8 +71,9 @@ def log_response(response):
     return response
 
 
-
-
+# ---------------------------
+# HEALTH & READINESS
+# ---------------------------
 @app.route('/health', methods=['GET'])
 def health():
     logger.info(json.dumps({"event": "health_check", "status": "ok"}))
@@ -61,20 +82,19 @@ def health():
 
 @app.route('/ready', methods=['GET'])
 def readiness():
-    # Check database readiness
     conn = get_db_connection(check_only=True)
     status = "ready" if conn else "not ready"
-
     logger.info(json.dumps({"event": "readiness_check", "status": status}))
+
     if conn:
         conn.close()
         return {"status": "ready"}, 200
     return {"status": "not ready"}, 500
 
 
-
-
-
+# ---------------------------
+# DATABASE CONFIG
+# ---------------------------
 DB_HOST = os.getenv("DB_HOST", "34.42.255.232")
 DB_NAME = os.getenv("DB_NAME", "productdb")
 DB_USER = os.getenv("DB_USER", "postgres")
@@ -82,6 +102,9 @@ DB_PASS = os.getenv("DB_PASS", "postgres")
 DB_PORT = os.getenv("DB_PORT", "5432")
 
 
+# ---------------------------
+# DATABASE CONNECTION
+# ---------------------------
 def get_db_connection(check_only=False):
     try:
         conn = psycopg2.connect(
@@ -100,15 +123,13 @@ def get_db_connection(check_only=False):
         return None
 
 
-
-
+# ---------------------------
+# CREATE TABLE IF NOT EXISTS
+# ---------------------------
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
-        logger.error(json.dumps({
-            "event": "table_create_failed",
-            "reason": "db_connection_failed"
-        }))
+        logger.error(json.dumps({"event": "table_create_failed", "reason": "db_connection_failed"}))
         return
 
     try:
@@ -131,13 +152,12 @@ def create_table_if_not_exists():
         conn.close()
 
 
-
-
+# ---------------------------
+# ROUTES
+# ---------------------------
 @app.route("/")
 def home():
-    return jsonify({
-        "message": "Welcome to the Product API (Cloud SQL connected)"
-    })
+    return jsonify({"message": "Welcome to the Product API (Cloud SQL connected)"})
 
 
 @app.route("/products", methods=["GET"])
@@ -151,8 +171,7 @@ def get_products():
         cur.execute("SELECT * FROM product;")
         rows = cur.fetchall()
         col_names = [desc[0] for desc in cur.description]
-        products = [dict(zip(col_names, row)) for row in rows]
-        return jsonify(products)
+        return jsonify([dict(zip(col_names, r)) for r in rows])
     except Exception as e:
         return {"error": str(e)}, 500
     finally:
@@ -172,6 +191,7 @@ def get_product(product_id):
         row = cur.fetchone()
         if not row:
             return {"error": "Product not found"}, 404
+
         col_names = [desc[0] for desc in cur.description]
         return jsonify(dict(zip(col_names, row)))
     except Exception as e:
@@ -182,15 +202,11 @@ def get_product(product_id):
 
 
 @app.route("/products", methods=["POST"])
+@require_api_key()
 def add_product():
     data = request.get_json()
 
-    name = data.get("name")
-    description = data.get("description")
-    price = data.get("price")
-    quantity = data.get("quantity", 0)
-
-    if not name or price is None:
+    if not data.get("name") or data.get("price") is None:
         return {"error": "Name and price are required"}, 400
 
     conn = get_db_connection()
@@ -203,7 +219,7 @@ def add_product():
             INSERT INTO product (name, description, price, quantity)
             VALUES (%s, %s, %s, %s)
             RETURNING id;
-        """, (name, description, price, quantity))
+        """, (data["name"], data.get("description"), data["price"], data.get("quantity", 0)))
         conn.commit()
         new_id = cur.fetchone()[0]
         return jsonify({"message": "Product added!", "id": new_id}), 201
@@ -215,9 +231,9 @@ def add_product():
 
 
 @app.route("/products/<int:product_id>", methods=["PUT"])
+@require_api_key()
 def update_product(product_id):
     data = request.get_json()
-
     conn = get_db_connection()
     if not conn:
         return {"error": "Database connection failed"}, 500
@@ -232,10 +248,9 @@ def update_product(product_id):
             UPDATE product
             SET name=%s, description=%s, price=%s, quantity=%s
             WHERE id=%s;
-        """, (data.get("name"), data.get("description"),
-              data.get("price"), data.get("quantity"), product_id))
+        """, (data.get("name"), data.get("description"), data.get("price"),
+              data.get("quantity"), product_id))
         conn.commit()
-
         return {"message": f"Product {product_id} updated!"}
     except Exception as e:
         return {"error": str(e)}, 500
@@ -245,6 +260,7 @@ def update_product(product_id):
 
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
+@require_api_key()
 def delete_product(product_id):
     conn = get_db_connection()
     if not conn:
@@ -258,7 +274,6 @@ def delete_product(product_id):
 
         cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
         conn.commit()
-
         return {"message": f"Product {product_id} deleted!"}
     except Exception as e:
         return {"error": str(e)}, 500
@@ -267,19 +282,12 @@ def delete_product(product_id):
         conn.close()
 
 
-
-
+# ---------------------------
+# START SERVER
+# ---------------------------
 if __name__ == "__main__":
     logger.info(json.dumps({"event": "starting_server"}))
 
-    # ONLY initialize DB and exit if running in Cloud Build init step
-    if os.getenv("INIT_DB_ONLY") == "true":
-        logger.info(json.dumps({"event": "db_init_mode"}))
-        create_table_if_not_exists()
-        logger.info(json.dumps({"event": "db_init_complete"}))
-        sys.exit(0)   # IMPORTANT: do not start Flask server
-
-    # Normal startup (in GKE)
     conn = get_db_connection()
     if conn:
         conn.close()
@@ -289,4 +297,3 @@ if __name__ == "__main__":
 
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
-
