@@ -48,6 +48,10 @@ resource "google_sql_database_instance" "postgres" {
     # Remove this & use private IP for production
     ip_configuration {
       ipv4_enabled = true
+      authorized_networks {
+    name  = "any"
+    value = "0.0.0.0/0"
+  }
     }
   }
 }
