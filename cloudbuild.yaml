@@ -24,7 +24,19 @@ steps:
         terraform apply -input=false -auto-approve tfplan
 
   # ----------------------------------------------------------
-  # 2) Push Docker image to Artifact Registry
+  # 2) Build Docker Image   
+  # ----------------------------------------------------------
+  - name: gcr.io/cloud-builders/docker
+    id: "Build Docker Image"
+    args:
+      [
+        "build",
+        "-t",
+        "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest",
+        "."
+      ] 
+  # ----------------------------------------------------------
+  # 3) Push Docker image to Artifact Registry
   # ----------------------------------------------------------
   - name: 'gcr.io/cloud-builders/docker'
     id: 'Push Docker Image'
@@ -33,7 +45,7 @@ steps:
       - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
 
   # ----------------------------------------------------------
-  # 3) Deploy to GKE
+  # 4) Deploy to GKE
   # ----------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Deploy to GKE'
@@ -58,7 +70,7 @@ steps:
         kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo " Rollout timeout" && kubectl get pods -o wide && exit 1)
 
   # ----------------------------------------------------------
-  # 4) Post-deployment checks & integration tests
+  # 5) Post-deployment checks & integration tests
   # ----------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Post-Deployment Checks & Integration Tests'
@@ -70,7 +82,7 @@ steps:
 
         echo " Running post-deployment checks..."
 
-        LB_IP="34.135.35.113"
+        LB_IP="34.172.89.29"
         MAX_RETRIES=12
         RETRY=0
 
@@ -120,7 +132,7 @@ steps:
         echo " Integration tests passed."
 
   # ----------------------------------------------------------
-  # 5) Synthetic uptime checks
+  # 6) Synthetic uptime checks
   # ----------------------------------------------------------
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Create Synthetic Uptime Checks'
