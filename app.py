@@ -57,11 +57,18 @@ def log_response(response):
 API_KEY = os.getenv("API_KEY")
 
 def require_api_key():
-    """Require X-API-KEY header for protected endpoints."""
-    key = request.headers.get("X-API-KEY")
+    """Require API key using multiple possible header formats."""
+
+    key = (
+        request.headers.get("X-API-KEY") or
+        request.headers.get("x-api-key") or
+        request.headers.get("X-api-key") or
+        request.headers.get("Authorization")  # optional support
+    )
+
     if API_KEY is None:
         logger.error(json.dumps({
-            "event": "api_key_not_loaded"
+            "event": "api_key_missing_in_environment"
         }))
         return False
 
