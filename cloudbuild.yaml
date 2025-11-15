@@ -8,6 +8,7 @@ substitutions:
   _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
 
 steps:
+  
   # ---------------------------------------------------------
   # 1) Install Terraform
   # ----------------------------------------------------------
@@ -26,8 +27,20 @@ steps:
 
         echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
-        
+  
+    
 
+  # ---------------------------------------------------------
+  # 1.1) Initialize Database (create table)
+  # ---------------------------------------------------------
+  - name: python:3.11
+    id: "Init Database"
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        pip install -r requirements.txt
+        INIT_DB_ONLY=true python app.py
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
   # ----------------------------------------------------------
