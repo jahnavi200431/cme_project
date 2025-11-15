@@ -113,6 +113,9 @@ steps:
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'Post-Deployment Checks & Integration Tests'
     entrypoint: 'bash'
+    env:
+      - API_KEY=chinnu31
+
     args:
       - '-c'
       - |
