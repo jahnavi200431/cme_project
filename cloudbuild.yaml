@@ -1,0 +1,189 @@
+options:
+  logging: 'CLOUD_LOGGING_ONLY'
+
+serviceAccount: 'projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com'
+
+steps:
+  # ----------------------------------------------------------
+  # 0) Install Config Connector CRDs
+  # ----------------------------------------------------------
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: "Install Config Connector"
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        echo "🛠 Installing Config Connector CRDs..."
+        gcloud services enable anthos.googleapis.com
+        gcloud services enable cloudresourcemanager.googleapis.com
+
+        gcloud container clusters get-credentials product-gke-cluster --region=us-central1-a
+
+        kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/k8s-config-connector/main/install-bundle/operator/manifest.yaml
+
+        echo "⏳ Waiting 45 seconds for CRDs to register..."
+        sleep 45
+
+  # ----------------------------------------------------------
+  # 1) Apply INFRA manifests
+  # ----------------------------------------------------------
+  - name: "gcr.io/cloud-builders/gcloud"
+    id: "Apply Infra"
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        echo "🔧 Applying Infra YAMLs..."
+        gcloud container clusters get-credentials product-gke-cluster --region=us-central1-a
+
+        kubectl apply -f infra/
+
+        echo "⏳ Waiting 40 seconds for infra resources..."
+        sleep 40
+
+  # ----------------------------------------------------------
+  # 2) Push Docker image to Artifact Registry
+  # ----------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'Push Docker Image'
+    args:
+      - 'push'
+      - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'
+
+  # ----------------------------------------------------------
+  # 3) Deploy to GKE
+  # ----------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Deploy to GKE'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        echo " Starting deployment to GKE..."
+
+        gcloud container clusters get-credentials product-gke-cluster \
+          --zone=us-central1-a \
+          --project=my-project-app-477009
+
+        echo "🔧 Updating image reference..."
+        sed -i.bak "s|\(image:[[:space:]]*\).*|\1us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest|g" k8s/deployment.yaml
+
+        echo " Applying Kubernetes manifests..."
+        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f k8s/service.yaml
+
+        echo " Waiting for rollout..."
+        kubectl rollout status deployment/gke-rest-api --timeout=80s || (echo " Rollout timeout" && kubectl get pods -o wide && exit 1)
+
+  # ----------------------------------------------------------
+  # 4) Post-deployment checks & integration tests
+  # ----------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Post-Deployment Checks & Integration Tests'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+
+        echo " Running post-deployment checks..."
+
+        LB_IP="34.135.35.113"
+        MAX_RETRIES=12
+        RETRY=0
+
+        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
+          sleep 10
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$$((RETRY+1))
+        done
+
+        if [ -z "$$LB_IP" ]; then
+          echo " LoadBalancer IP not found. Diagnosing..."
+          kubectl get svc gke-rest-api-service -o yaml || true
+          kubectl describe svc gke-rest-api-service || true
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+          exit 1
+        fi
+
+        echo " LoadBalancer IP resolved: $$LB_IP"
+
+        echo "⏳ Checking /products endpoint..."
+        for i in $$(seq 1 8); do
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
+            echo " /products returned 200 OK"
+            break
+          fi
+          sleep 5
+        done
+
+        if [ "$$http_status" != "200" ]; then
+          echo " /products endpoint failing."
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
+          kubectl describe svc gke-rest-api-service || true
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+          exit 1
+        fi
+
+        echo " Running integration tests..."
+        chmod +x tests/integration_test.sh || true
+        LB="$$LB_IP" bash tests/integration_test.sh
+
+        echo " Integration tests passed."
+
+  # ----------------------------------------------------------
+  # 5) Synthetic uptime checks
+  # ----------------------------------------------------------
+  - name: 'gcr.io/cloud-builders/gcloud'
+    id: 'Create Synthetic Uptime Checks'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+
+        if [ "${_CREATE_UPTIME_CHECK:-false}" != "true" ]; then
+          echo "Skipping uptime-check creation."
+          exit 0
+        fi
+
+        echo " Creating synthetic uptime checks..."
+
+        LB_IP="34.135.35.113:80"
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
+        fi
+
+        if [ -z "$$LB_IP" ]; then
+          echo "LB IP not found; skipping uptime checks."
+          exit 0
+        fi
+
+        echo "Using host $$LB_IP for synthetic checks."
+
+        chmod +x monitoring/create_uptime_check.sh || true
+
+        ./monitoring/create_uptime_check.sh \
+          --project=my-project-app-477009 \
+          --host="$$LB_IP" \
+          --paths="/products" \
+          --name-prefix="gke-rest-api" \
+          --notification-channel="projects/my-project-app-477009/notificationChannels/1434793113408835929"
+
+images:
+  - 'us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest'

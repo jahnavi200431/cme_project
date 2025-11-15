@@ -1,0 +1,20 @@
+
+
+{
+  "displayName": "GKE REST API Uptime Alert",
+  "enabled": true,
+  "combiner": "OR",
+  "conditions": [
+    {
+      "displayName": "Uptime Check Failed",
+      "conditionThreshold": {
+        "filter": "metric.type=\"monitoring.googleapis.com/uptime_check/check_passed\" AND resource.type=\"uptime_url\" AND resource.label.\"check_id\"=\"gke-rest-api-products-9EIPgCWoV6w\"",
+        "comparison": "COMPARISON_LT",
+        "thresholdValue": 1,
+        "duration": "60s",
+        "trigger": { "count": 1 }
+      }
+    }
+  ],
+  "notificationChannels": ["projects/my-project-app-477009/notificationChannels/17195648222355338109"]
+}
