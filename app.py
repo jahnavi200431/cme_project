@@ -7,18 +7,26 @@ import json
 
 app = Flask(__name__)
 
-# ------------------------------
-#  JSON Logging
-# ------------------------------
+# ---------------------------------------------------------
+# JSON LOGGING (CLOUD LOGGING FRIENDLY)
+# ---------------------------------------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
+
         log = {
             "severity": record.levelname,
-            "message": record.getMessage(),
             "app": "gke-rest-api",
             "version": "1.0.0",
         }
+
+        # If message is dict (structured), merge it
+        if isinstance(record.msg, dict):
+            log.update(record.msg)
+        else:
+            log["message"] = record.getMessage()
+
         return json.dumps(log)
+
 
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
@@ -30,72 +38,82 @@ logger.handlers = [json_handler]
 logging.getLogger("werkzeug").disabled = True
 
 
+# ---------------------------------------------------------
+# REQUEST LOGGING
+# ---------------------------------------------------------
 @app.before_request
 def log_request():
-    logger.info(json.dumps({
+
+    # Read request body safely
+    try:
+        body = request.get_json(silent=True)
+    except:
+        body = "<unreadable JSON>"
+
+    logger.info({
         "event": "request",
         "method": request.method,
         "path": request.path,
-        "remote_ip": request.remote_addr
-    }))
+        "remote_ip": request.remote_addr,
+        "query_params": request.args.to_dict(),
+        "headers": {k: v for k, v in request.headers.items()},
+        "body": body
+    })
 
 
-# ------------------------------
-#  RESPONSE LOGGING
-# ------------------------------
+# ---------------------------------------------------------
+# RESPONSE LOGGING
+# ---------------------------------------------------------
 @app.after_request
 def log_response(response):
-    try:
-        response_data = response.get_data().decode("utf-8")
-    except:
-        response_data = "<non-json response>"
 
-    logger.info(json.dumps({
+    try:
+        response_text = response.get_data(as_text=True)
+    except:
+        response_text = "<non-json response>"
+
+    logger.info({
         "event": "response",
         "method": request.method,
         "path": request.path,
         "status": response.status_code,
-        "response_body": response_data[:500]   # limit to prevent huge logs
-    }))
+        "response_body": response_text[:500]
+    })
 
     return response
 
 
-# ---------------------------------
-#  API KEY SECURITY
-# ---------------------------------
+# ---------------------------------------------------------
+# API KEY SECURITY
+# ---------------------------------------------------------
 API_KEY = os.getenv("API_KEY")
 
-def require_api_key():
-    """Require API key using multiple possible header formats."""
 
-    key = (
-        request.headers.get("X-API-KEY") or
-        request.headers.get("x-api-key") or
-        request.headers.get("X-api-key") or
-        request.headers.get("Authorization")  # optional support
+def require_api_key():
+
+    provided_key = (
+        request.headers.get("X-API-KEY")
+        or request.headers.get("x-api-key")
+        or request.headers.get("Authorization")
     )
 
     if API_KEY is None:
-        logger.error(json.dumps({
-            "event": "api_key_missing_in_environment"
-        }))
+        logger.error({"event": "api_key_env_missing"})
         return False
 
-    if key != API_KEY:
-        logger.warning(json.dumps({
+    if provided_key != API_KEY:
+        logger.warning({
             "event": "auth_failed",
-            "provided_key": key
-        }))
+            "provided_key": provided_key
+        })
         return False
 
     return True
 
 
-# ------------------------------
-#  HEALTH CHECKS
-# ------------------------------
-
+# ---------------------------------------------------------
+# HEALTH CHECKS
+# ---------------------------------------------------------
 @app.route('/health', methods=['GET'])
 def health():
     return {"status": "healthy"}, 200
@@ -110,9 +128,9 @@ def readiness():
     return {"status": "not ready"}, 500
 
 
-# ------------------------------
-#  DATABASE CONFIG
-# ------------------------------
+# ---------------------------------------------------------
+# DATABASE CONFIG
+# ---------------------------------------------------------
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
@@ -131,13 +149,10 @@ def get_db_connection(check_only=False):
             connect_timeout=5
         )
         if not check_only:
-            logger.info(json.dumps({"event": "db_connection", "status": "success"}))
+            logger.info({"event": "db_connection_ok"})
         return conn
     except Exception as e:
-        logger.error(json.dumps({
-            "event": "db_connection_failed",
-            "error": str(e)
-        }))
+        logger.error({"event": "db_connection_failed", "error": str(e)})
         return None
 
 
@@ -158,12 +173,9 @@ def create_table_if_not_exists():
             );
         """)
         conn.commit()
-        logger.info(json.dumps({"event": "table_created"}))
+        logger.info({"event": "table_created"})
     except Exception as e:
-        logger.error(json.dumps({
-            "event": "table_creation_error",
-            "error": str(e)
-        }))
+        logger.error({"event": "table_creation_error", "error": str(e)})
     finally:
         cur.close()
         conn.close()
@@ -174,10 +186,9 @@ def home():
     return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
 
 
-# ---------------------------------
-#  PUBLIC ROUTES
-# ---------------------------------
-
+# ---------------------------------------------------------
+# PUBLIC ROUTES
+# ---------------------------------------------------------
 @app.route("/products", methods=["GET"])
 def get_products():
     conn = get_db_connection()
@@ -215,12 +226,12 @@ def get_product(product_id):
         conn.close()
 
 
-# ---------------------------------
-#  PROTECTED ROUTES (API KEY REQUIRED)
-# ---------------------------------
-
+# ---------------------------------------------------------
+# PROTECTED ROUTES (API KEY REQUIRED)
+# ---------------------------------------------------------
 @app.route("/products", methods=["POST"])
 def add_product():
+
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
@@ -252,6 +263,7 @@ def add_product():
 
 @app.route("/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
+
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
@@ -287,6 +299,7 @@ def update_product(product_id):
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
+
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
@@ -308,12 +321,11 @@ def delete_product(product_id):
         conn.close()
 
 
-# ---------------------------------
-#  START SERVER
-# ---------------------------------
-
+# ---------------------------------------------------------
+# START SERVER
+# ---------------------------------------------------------
 if __name__ == "__main__":
-    logger.info(json.dumps({"event": "starting_server"}))
+    logger.info({"event": "starting_server"})
 
     if os.getenv("INIT_DB_ONLY") == "true":
         create_table_if_not_exists()
