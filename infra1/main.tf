@@ -5,15 +5,23 @@ provider "google" {
 }
 
 # -------------------------------------------------------------
-#  EXISTING SERVICE ACCOUNT (Your chosen SA)
+#  USE YOUR EXISTING SERVICE ACCOUNT
 # -------------------------------------------------------------
-# No need to create it — we just reference it
 locals {
-  existing_node_sa = "433503387155-compute@developer.gserviceaccount.com"
+  node_sa = "433503387155-compute@developer.gserviceaccount.com"
 }
 
 # -------------------------------------------------------------
-#  GKE CLUSTER (Workload Identity optional)
+#  IAM PERMISSION: Allow this SA to connect to Cloud SQL
+# -------------------------------------------------------------
+resource "google_project_iam_member" "node_sa_cloudsql" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${local.node_sa}"
+}
+
+# -------------------------------------------------------------
+#  GKE CLUSTER
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
@@ -23,15 +31,10 @@ resource "google_container_cluster" "gke" {
   initial_node_count       = 1
 
   network = "default"
-
-  # (Optional) Workload Identity
-  workload_identity_config {
-    workload_pool = "${var.project_id}.svc.id.goog"
-  }
 }
 
 # -------------------------------------------------------------
-#  NODE POOL USING EXISTING SERVICE ACCOUNT
+#  NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
 resource "google_container_node_pool" "node_pool" {
   name     = "api-node-pool"
@@ -41,8 +44,8 @@ resource "google_container_node_pool" "node_pool" {
   node_config {
     machine_type    = "e2-small"
 
-    # Use your chosen service account
-    service_account = local.existing_node_sa
+    # 👍 The service account YOU want to use
+    service_account = local.node_sa
 
     oauth_scopes = [
       "https://www.googleapis.com/auth/logging.write",
@@ -55,7 +58,7 @@ resource "google_container_node_pool" "node_pool" {
 }
 
 # -------------------------------------------------------------
-#  CLOUD SQL — unchanged (you asked not to modify networking)
+#  CLOUD SQL (NO NETWORK CHANGES REQUESTED)
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -68,6 +71,7 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled = true
 
+      # ⚠️ You asked NOT to change this → stays open
       authorized_networks {
         name  = "any"
         value = "0.0.0.0/0"
@@ -76,11 +80,13 @@ resource "google_sql_database_instance" "postgres" {
   }
 }
 
+# Create DB
 resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
 }
 
+# Create DB user
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
