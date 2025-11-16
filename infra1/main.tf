@@ -5,16 +5,32 @@ provider "google" {
 }
 
 # -------------------------------------------------------------
-#  USE YOUR EXISTING SERVICE ACCOUNT
+#  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
 # -------------------------------------------------------------
 locals {
-  node_sa = "433503387155-compute@developer.gserviceaccount.com"
+  node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
 # -------------------------------------------------------------
-#  IAM PERMISSION: Allow this SA to connect to Cloud SQL
+#  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
-resource "google_project_iam_member" "node_sa_cloudsql" {
+
+# Allow GKE nodes to write logs
+resource "google_project_iam_member" "logwriter" {
+  project = var.project_id
+  role    = "roles/logging.logWriter"
+  member  = "serviceAccount:${local.node_sa}"
+}
+
+# Allow GKE nodes to write monitoring metrics
+resource "google_project_iam_member" "metricwriter" {
+  project = var.project_id
+  role    = "roles/monitoring.metricWriter"
+  member  = "serviceAccount:${local.node_sa}"
+}
+
+# Allow GKE nodes to access Cloud SQL
+resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${local.node_sa}"
@@ -44,7 +60,7 @@ resource "google_container_node_pool" "node_pool" {
   node_config {
     machine_type    = "e2-small"
 
-    # 👍 The service account YOU want to use
+    # ✔ Your custom service account
     service_account = local.node_sa
 
     oauth_scopes = [
@@ -58,7 +74,7 @@ resource "google_container_node_pool" "node_pool" {
 }
 
 # -------------------------------------------------------------
-#  CLOUD SQL (NO NETWORK CHANGES REQUESTED)
+#  CLOUD SQL INSTANCE
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -71,7 +87,7 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled = true
 
-      # ⚠️ You asked NOT to change this → stays open
+      # ⚠️ Not modifying as per your request
       authorized_networks {
         name  = "any"
         value = "0.0.0.0/0"
