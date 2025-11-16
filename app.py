@@ -28,18 +28,30 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log)
 
 
+# JSON handler → stdout
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
 
+# Root logger → ensures all libraries log JSON
+root = logging.getLogger()
+root.setLevel(logging.INFO)
+root.handlers = []
+root.addHandler(json_handler)
+
+# App logger
 logger = logging.getLogger("gke-rest-api")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-logging.getLogger("werkzeug").disabled = True
+# ENABLE werkzeug logs
+werk = logging.getLogger("werkzeug")
+werk.setLevel(logging.INFO)
+werk.handlers = []
+werk.addHandler(json_handler)
 
 
 # ---------------------------------------------------------
-# WSGI MIDDLEWARE (Fix missing logs behind Gunicorn)
+# WSGI MIDDLEWARE (Log all requests/responses)
 # ---------------------------------------------------------
 class RequestResponseLoggerMiddleware:
     def __init__(self, app):
@@ -47,7 +59,7 @@ class RequestResponseLoggerMiddleware:
 
     def __call__(self, environ, start_response):
 
-        # ---- Capture Request Body ----
+        # Read request body
         try:
             raw_body = environ["wsgi.input"].read()
             body_text = raw_body.decode("utf-8")
@@ -60,10 +72,10 @@ class RequestResponseLoggerMiddleware:
             "method": environ.get("REQUEST_METHOD"),
             "path": environ.get("PATH_INFO"),
             "query": environ.get("QUERY_STRING"),
+            "remote_ip": environ.get("REMOTE_ADDR"),
             "body": body_text[:1000]
         })
 
-        # ---- Capture Response ----
         def custom_start_response(status, headers, exc_info=None):
 
             logger.info({
@@ -78,12 +90,12 @@ class RequestResponseLoggerMiddleware:
         return self.app(environ, custom_start_response)
 
 
-# Attach middleware
+# Attach logging middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
 
 # ---------------------------------------------------------
-# API KEY SECURITY
+# API KEY CHECK
 # ---------------------------------------------------------
 API_KEY = os.getenv("API_KEY")
 
@@ -150,6 +162,7 @@ def get_db_connection(check_only=False):
         if not check_only:
             logger.info({"event": "db_connection_ok"})
         return conn
+
     except Exception as e:
         logger.error({"event": "db_connection_failed", "error": str(e)})
         return None
@@ -180,19 +193,19 @@ def create_table_if_not_exists():
         conn.close()
 
 
+# ---------------------------------------------------------
+# ROUTES
+# ---------------------------------------------------------
 @app.route("/")
 def home():
     return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
 
 
-# ---------------------------------------------------------
-# PUBLIC ROUTES
-# ---------------------------------------------------------
 @app.route("/products", methods=["GET"])
 def get_products():
     conn = get_db_connection()
     if not conn:
-        return {"error": "Database connection failed"}, 500
+        return {"error": "DB connection failed"}, 500
 
     try:
         cur = conn.cursor()
@@ -209,7 +222,7 @@ def get_products():
 def get_product(product_id):
     conn = get_db_connection()
     if not conn:
-        return {"error": "Database connection failed"}, 500
+        return {"error": "DB connection failed"}, 500
 
     try:
         cur = conn.cursor()
@@ -225,9 +238,6 @@ def get_product(product_id):
         conn.close()
 
 
-# ---------------------------------------------------------
-# PROTECTED ROUTES
-# ---------------------------------------------------------
 @app.route("/products", methods=["POST"])
 def add_product():
 
@@ -252,9 +262,11 @@ def add_product():
             data.get("price"),
             data.get("quantity", 0)
         ))
+
         conn.commit()
         new_id = cur.fetchone()[0]
         return {"message": "Product added!", "id": new_id}, 201
+
     finally:
         cur.close()
         conn.close()
@@ -289,8 +301,10 @@ def update_product(product_id):
             data.get("quantity"),
             product_id
         ))
+
         conn.commit()
         return {"message": "Product updated!"}, 200
+
     finally:
         cur.close()
         conn.close()
@@ -315,6 +329,7 @@ def delete_product(product_id):
         cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
         conn.commit()
         return {"message": "Product deleted!"}, 200
+
     finally:
         cur.close()
         conn.close()
