@@ -91,6 +91,7 @@ steps:
         echo "📦 Applying Kubernetes manifests..."
         kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/api-key-secret.yaml
+        kubectl apply -f k8s/backendconfig.yaml
         kubectl apply -f k8s/deployment.yaml
         kubectl apply -f k8s/service.yaml
        
