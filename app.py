@@ -40,14 +40,24 @@ def log_request():
     }))
 
 
+# ------------------------------
+#  RESPONSE LOGGING
+# ------------------------------
 @app.after_request
 def log_response(response):
+    try:
+        response_data = response.get_data().decode("utf-8")
+    except:
+        response_data = "<non-json response>"
+
     logger.info(json.dumps({
         "event": "response",
         "method": request.method,
         "path": request.path,
-        "status": response.status_code
+        "status": response.status_code,
+        "response_body": response_data[:500]   # limit to prevent huge logs
     }))
+
     return response
 
 
