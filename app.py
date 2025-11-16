@@ -4,6 +4,7 @@ import os
 import logging
 import sys
 import json
+import io
 
 app = Flask(__name__)
 
@@ -19,7 +20,6 @@ class JsonFormatter(logging.Formatter):
             "version": "1.0.0",
         }
 
-        # If message is dict (structured), merge it
         if isinstance(record.msg, dict):
             log.update(record.msg)
         else:
@@ -39,48 +39,47 @@ logging.getLogger("werkzeug").disabled = True
 
 
 # ---------------------------------------------------------
-# REQUEST LOGGING
+# WSGI MIDDLEWARE (Fix missing logs behind Gunicorn)
 # ---------------------------------------------------------
-@app.before_request
-def log_request():
+class RequestResponseLoggerMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-    # Read request body safely
-    try:
-        body = request.get_json(silent=True)
-    except:
-        body = "<unreadable JSON>"
+    def __call__(self, environ, start_response):
 
-    logger.info({
-        "event": "request",
-        "method": request.method,
-        "path": request.path,
-        "remote_ip": request.remote_addr,
-        "query_params": request.args.to_dict(),
-        "headers": {k: v for k, v in request.headers.items()},
-        "body": body
-    })
+        # ---- Capture Request Body ----
+        try:
+            raw_body = environ["wsgi.input"].read()
+            body_text = raw_body.decode("utf-8")
+            environ["wsgi.input"] = io.BytesIO(raw_body)
+        except:
+            body_text = "<unable to read>"
+
+        logger.info({
+            "event": "request",
+            "method": environ.get("REQUEST_METHOD"),
+            "path": environ.get("PATH_INFO"),
+            "query": environ.get("QUERY_STRING"),
+            "body": body_text[:1000]
+        })
+
+        # ---- Capture Response ----
+        def custom_start_response(status, headers, exc_info=None):
+
+            logger.info({
+                "event": "response",
+                "status": status.split()[0],
+                "path": environ.get("PATH_INFO"),
+                "headers": dict(headers)
+            })
+
+            return start_response(status, headers, exc_info)
+
+        return self.app(environ, custom_start_response)
 
 
-# ---------------------------------------------------------
-# RESPONSE LOGGING
-# ---------------------------------------------------------
-@app.after_request
-def log_response(response):
-
-    try:
-        response_text = response.get_data(as_text=True)
-    except:
-        response_text = "<non-json response>"
-
-    logger.info({
-        "event": "response",
-        "method": request.method,
-        "path": request.path,
-        "status": response.status_code,
-        "response_body": response_text[:500]
-    })
-
-    return response
+# Attach middleware
+app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
 
 # ---------------------------------------------------------
@@ -227,7 +226,7 @@ def get_product(product_id):
 
 
 # ---------------------------------------------------------
-# PROTECTED ROUTES (API KEY REQUIRED)
+# PROTECTED ROUTES
 # ---------------------------------------------------------
 @app.route("/products", methods=["POST"])
 def add_product():
