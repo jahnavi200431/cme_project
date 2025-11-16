@@ -28,22 +28,18 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(log)
 
 
-# JSON handler → stdout
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
 
-# Root logger → ensures all libraries log JSON
 root = logging.getLogger()
 root.setLevel(logging.INFO)
 root.handlers = []
 root.addHandler(json_handler)
 
-# App logger
 logger = logging.getLogger("gke-rest-api")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-# ENABLE werkzeug logs
 werk = logging.getLogger("werkzeug")
 werk.setLevel(logging.INFO)
 werk.handlers = []
@@ -51,7 +47,7 @@ werk.addHandler(json_handler)
 
 
 # ---------------------------------------------------------
-# WSGI MIDDLEWARE (Log all requests/responses)
+# WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
 # ---------------------------------------------------------
 class RequestResponseLoggerMiddleware:
     def __init__(self, app):
@@ -73,24 +69,45 @@ class RequestResponseLoggerMiddleware:
             "path": environ.get("PATH_INFO"),
             "query": environ.get("QUERY_STRING"),
             "remote_ip": environ.get("REMOTE_ADDR"),
-            "body": body_text[:1000]
+            "body": body_text[:5000]
         })
 
+        response_body_chunks = []
+
         def custom_start_response(status, headers, exc_info=None):
+            nonlocal response_body_chunks
 
-            logger.info({
-                "event": "response",
-                "status": status.split()[0],
-                "path": environ.get("PATH_INFO"),
-                "headers": dict(headers)
-            })
+            def write(body):
+                response_body_chunks.append(body)
+                return start_response(status, headers, exc_info)
 
-            return start_response(status, headers, exc_info)
+            start_response(status, headers, exc_info)
+            return write
 
-        return self.app(environ, custom_start_response)
+        result = self.app(environ, custom_start_response)
+
+        # Capture response chunks
+        for chunk in result:
+            response_body_chunks.append(chunk)
+
+        # Convert response body
+        full_response_body = b"".join(response_body_chunks)
+        try:
+            response_text = full_response_body.decode("utf-8")
+        except:
+            response_text = "<binary response>"
+
+        logger.info({
+            "event": "response",
+            "status": "200",
+            "path": environ.get("PATH_INFO"),
+            "response_body": response_text[:5000]
+        })
+
+        return response_body_chunks
 
 
-# Attach logging middleware
+# Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
 
@@ -102,24 +119,24 @@ API_KEY = os.getenv("API_KEY")
 
 def require_api_key():
 
-    provided_key = (
-        request.headers.get("X-API-KEY")
-        or request.headers.get("x-api-key")
-        or request.headers.get("Authorization")
-    )
+        provided_key = (
+            request.headers.get("X-API-KEY")
+            or request.headers.get("x-api-key")
+            or request.headers.get("Authorization")
+        )
 
-    if API_KEY is None:
-        logger.error({"event": "api_key_env_missing"})
-        return False
+        if API_KEY is None:
+            logger.error({"event": "api_key_env_missing"})
+            return False
 
-    if provided_key != API_KEY:
-        logger.warning({
-            "event": "auth_failed",
-            "provided_key": provided_key
-        })
-        return False
+        if provided_key != API_KEY:
+            logger.warning({
+                "event": "auth_failed",
+                "provided_key": provided_key
+            })
+            return False
 
-    return True
+        return True
 
 
 # ---------------------------------------------------------
