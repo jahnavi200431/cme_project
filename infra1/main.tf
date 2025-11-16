@@ -5,36 +5,40 @@ provider "google" {
 }
 
 # -------------------
-# Create GKE Cluste
+# Create GKE Cluster (Private VPC-native)
 # -------------------
 resource "google_container_cluster" "gke" {
-  name     = "product-gke-cluster"
-  location = var.zone
-  deletion_protection = false
+  name                  = "product-gke-cluster"
+  location              = var.zone
   remove_default_node_pool = true
-  initial_node_count       = 2
+  deletion_protection   = false
 
-  network = "default"
+  network    = "default"
+  subnetwork = "default"
+
+  ip_allocation_policy {
+    cluster_secondary_range_name  = "pods"
+    services_secondary_range_name = "services"
+  }
+
+  initial_node_count = 1
 }
 
-# Node Pool
 resource "google_container_node_pool" "node_pool" {
-  name       = "api-node-pool"
-  cluster    = google_container_cluster.gke.name
-  location   = var.zone
+  name     = "api-node-pool"
+  cluster  = google_container_cluster.gke.name
+  location = var.zone
 
   node_config {
     machine_type = "e2-small"
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
+    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
   }
 
   initial_node_count = 2
 }
 
 # -------------------
-# Create PostgreSQL (Cloud SQL)
+# Cloud SQL with PRIVATE IP ONLY
 # -------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -44,25 +48,18 @@ resource "google_sql_database_instance" "postgres" {
   settings {
     tier = "db-f1-micro"
 
-    # Enable public IP for simple testing 
-    # Remove this & use private IP for production
     ip_configuration {
-      ipv4_enabled = true
-      authorized_networks {
-    name  = "any"
-    value = "0.0.0.0/0"
-  }
+      ipv4_enabled    = false  # 🔒 disable public IP
+      private_network = "projects/${var.project_id}/global/networks/default"
     }
   }
 }
 
-# Create initial database
 resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
 }
 
-# Create Postgres user
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
