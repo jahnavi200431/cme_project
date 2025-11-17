@@ -4,18 +4,15 @@ metadata:
   name: api-backendconfig
 spec:
   healthCheck:
-    checkIntervalSec: 5
+    checkIntervalSec: 10
     timeoutSec: 5
-    healthyThreshold: 1
-    unhealthyThreshold: 2
+    healthyThreshold: 2
+    unhealthyThreshold: 3
     port: 8080
     requestPath: /health
 
 ---
 
-# ------------------------------
-# 3) Deployment
-# -------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -43,21 +40,22 @@ spec:
           ports:
             - containerPort: 8080
 
-          # Readiness & Liveness probes
           readinessProbe:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 5
-            periodSeconds: 5
+            initialDelaySeconds: 30   # Give time to connect to DB
+            periodSeconds: 10
+            failureThreshold: 10
+
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
 
-          # CPU/Memory requests & limits (required for HPA)
           resources:
             requests:
               cpu: "100m"
@@ -66,7 +64,6 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
-          # Environment variables from Secret
           env:
             - name: DB_HOST
               valueFrom:
@@ -101,9 +98,6 @@ spec:
 
 ---
 
-# -------------------------------
-# 4) Service (LoadBalancer)
-# -------------------------------
 apiVersion: v1
 kind: Service
 metadata:
@@ -120,9 +114,6 @@ spec:
 
 ---
 
-# -------------------------------
-# 5) Horizontal Pod Autoscaler
-# -------------------------------
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
