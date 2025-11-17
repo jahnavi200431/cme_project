@@ -13,7 +13,7 @@ locals {
 
 # -------------------------------------------------------------
 #  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
-# -------------------------------------------------------------
+# ------------------------------------------------------------
 
 # Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
