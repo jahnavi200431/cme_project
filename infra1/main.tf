@@ -14,7 +14,6 @@ locals {
 # -------------------------------------------------------------
 #  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
-
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
@@ -34,22 +33,19 @@ resource "google_project_iam_member" "cloudsql_client" {
 }
 
 # -------------------------------------------------------------
-#  SECURE VPC & SUBNET FOR GKE
+#  USE EXISTING VPC & SUBNET (NO CREATION → NO QUOTA ERROR)
 # -------------------------------------------------------------
-resource "google_compute_network" "gke_vpc" {
-  name                    = "gke-secure-vpc3"
-  auto_create_subnetworks = false
+data "google_compute_network" "gke_vpc" {
+  name = "default"
 }
 
-resource "google_compute_subnetwork" "gke_subnet" {
-  name          = "gke-secure-subnet3"
-  region        = var.region
-  network       = google_compute_network.gke_vpc.self_link
-  ip_cidr_range = "10.50.0.0/20"
+data "google_compute_subnetwork" "gke_subnet" {
+  name   = "default"
+  region = var.region
 }
 
 # -------------------------------------------------------------
-#  UPDATED GKE CLUSTER (PRIVATE NODES + MAN + PUBLIC ENDPOINT)
+#  UPDATED GKE CLUSTER (PRIVATE NODES + PUBLIC ENDPOINT)
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
@@ -58,33 +54,26 @@ resource "google_container_cluster" "gke" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  network    = google_compute_network.gke_vpc.self_link
-  subnetwork = google_compute_subnetwork.gke_subnet.self_link
+  network    = data.google_compute_network.gke_vpc.self_link
+  subnetwork = data.google_compute_subnetwork.gke_subnet.self_link
 
-  # -------------------------------
-  # PRIVATE NODES + PUBLIC CONTROL PLANE
-  # -------------------------------
   private_cluster_config {
     enable_private_nodes    = true
-    enable_private_endpoint = false   # 👈 KEEP THIS FALSE (Cloud Build needs access)
+    enable_private_endpoint = false  # MUST remain false to allow kubectl & Cloud Build
     master_ipv4_cidr_block  = "172.16.0.0/28"
   }
 
-  # -------------------------------
-  # MASTER AUTHORIZED NETWORKS
-  # -------------------------------
   master_authorized_networks_config {
-  cidr_blocks {
-    display_name = "admin-access"
-    cidr_block   = var.admin_ip_cidr
-  }
+    cidr_blocks {
+      display_name = "admin-access"
+      cidr_block   = var.admin_ip_cidr   # your laptop IP /32
+    }
 
-  cidr_blocks {
-    display_name = "google-cloud"
-    cidr_block   = "35.235.240.0/20"
+    cidr_blocks {
+      display_name = "google-cloud"
+      cidr_block   = "35.235.240.0/20"   # required for GKE API
+    }
   }
-}
-
 
   ip_allocation_policy {}
 }
