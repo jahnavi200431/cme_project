@@ -1,298 +1,206 @@
-📘 Cloud-Native REST API on Google Kubernetes Engine (GKE)
+# Scalable REST API Deployment on Google Kubernetes Engine (GKE)
 
-This repository contains a fully containerized REST API designed for modern cloud deployment. It leverages the power of Google Kubernetes Engine (GKE) for orchestration, with all infrastructure managed as code using Terraform. The project includes a robust CI/CD pipeline built on Google Cloud Build for automated deployment.
+_A Cloud-Native Application with Terraform IaC, Cloud SQL, Kubernetes, and CI/CD Automation_
 
-🚀 Features
+---
 
-🧩 Application
+## 1. Executive Summary
 
-REST API: Implemented using Python/Flask or Node/Express.
+This project delivers a fully operational, cloud-native REST API deployed on Google Kubernetes Engine (GKE), integrated with a PostgreSQL backend hosted on Cloud SQL. The solution is packaged using Docker, orchestrated with Kubernetes, and fully automated through a Continuous Integration/Continuous Deployment (CI/CD) pipeline powered by Google Cloud Build.
 
-Configuration: Highly configurable through environment variables.
+The implementation reflects industry standards in cloud engineering, DevOps, and scalable microservices design—suited for enterprise environments requiring reliability, security, maintainability, and automated software delivery.
 
-Database: Integration with Cloud SQL (PostgreSQL).
+---
 
-Structure: A production-ready, modular application structure.
+## 2. Key Capabilities
 
-🌐 Infrastructure
+### 2.1 Application Layer
 
-GKE Cluster: Provisioned entirely using Terraform.
+- REST API implemented using Python (Flask) 
+- CRUD operations for Product entity
+- Structured JSON-based logging
 
-Scalability: Node pools configured with autoscaling.
 
-Database: Managed Cloud SQL PostgreSQL instance.
+### 2.2 Infrastructure Layer
 
-Networking: Secure VPC, subnets, and firewall rules.
+- GKE cluster deployment using Terraform
+- Managed PostgreSQL database using Cloud SQL 
+- IAM roles defined through IaC
+- Kubernetes resources include:
+  - Deployments
+  - Services
+  - Ingress
+  - Horizontal Pod Autoscaler (HPA)
+  - Secrets
 
-Container Registry: Artifact Registry for secure Docker image storage.
+### 2.3 CI/CD Layer
 
-🔄 CI/CD
+- Automated CI/CD via Cloud Build
+- Continuous delivery through rolling updates on GKE
+- Container image storage in Artifact Registry
+- Integration and health checks executed post-deployment
 
-Automation: An automated Cloud Build pipeline.
+### 2.4 Operational Excellence
 
-Workflow: Build → Test → Docker Push → Deploy to GKE.
+- Centralized logging through Cloud Logging
+- Metrics dashboard and alerting through Cloud Monitoring
+- Secure communication and controlled access using IAM, Secrets
 
-Triggers: Configured for pushes to GitHub and manual execution.
+---
 
-📁 Project Structure
 
+## 3. Repository Structure
+
+```
 .
-├── app/                  # Application source code
-│   ├── main.py / app.js  # Main application entry point
-│   ├── requirements.txt / package.json # App dependencies
-│   ├── src/              # Core logic/controllers
-│   └── tests/            # Unit and integration tests
+├── app/                   
+│   ├── main.py / app.js
+│   ├── requirements.txt / package.json
 │
-├── Dockerfile            # Instructions to build the application container
+├── k8s/                  
+│   ├── deployment.yaml
+│   ├── service.yaml
+│   ├── ingress.yaml
+│   ├── hpa.yaml
+│   ├── configmap.yaml
+│   └── secret.yaml
 │
-├── k8s/                  # Kubernetes manifests
-│   ├── deployment.yaml   # Defines the API deployment (replicas, image, etc.)
-│   ├── service.yaml      # Exposes the deployment as a service (LoadBalancer/ClusterIP)
-│   ├── configmap.yaml    # Non-sensitive configuration (e.g., app settings)
-│   └── secret.yaml       # Sensitive configuration (e.g., database credentials)
+├── terraform/            
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
 │
-├── terraform/            # Infrastructure as Code (IaC) configuration
-│   ├── main.tf           # Main resource definitions
-│   ├── variables.tf      # Input variables
-│   ├── outputs.tf        # Output values (e.g., GKE cluster name)
-│   └── providers.tf      # Cloud provider configuration
+├── tests/
+│   └── integration_tests.sh
 │
-├── cloudbuild.yaml       # Google Cloud Build pipeline definition
-└── README.md             # This file
+├── ci-cd/
+|       |___cloudbuild.yaml      
+├── Dockerfile           
+└── README.md            
+```
 
+---
 
-🛠️ Local Development
+## 4. API Specifications
 
-Prerequisites
+### Product Endpoints
 
-Python (for Flask) or Node.js (for Express)
+| Method | Endpoint          | Description                |
+| ------ | ---------------- | ------------------------- |
+| GET    | /products        | Retrieve all products     |
+| GET    | /products/{id}   | Retrieve product by ID    |
+| POST   | /products        | Create new product        |
+| PUT    | /products/{id}   | Update existing product   |
+| DELETE | /products/{id}   | Delete product            |
 
-Docker
+### Health Monitoring
 
-kubectl (Kubernetes CLI)
+- **GET /health** → Returns application uptime status
 
-Terraform
+---
 
-Google Cloud SDK (gcloud)
+## 5. Database Schema
 
-Install Dependencies
+| Field        | Type         | Description         |
+| ------------ | ------------ | -------------------|
+| id           | UUID / INT   | Primary key         |
+| name         | VARCHAR(255) | Product name        |
+| description  | TEXT         | Product description |
+| price        | DECIMAL/FLOAT| Product price       |
+| quantity     | INTEGER      | Available stock     |
+| created_at   | TIMESTAMP    | Auto-generated      |
+| updated_at   | TIMESTAMP    | Auto-updated        |
 
-Navigate to the app/ directory and install the necessary packages.
+---
 
-Python:
+## 6. Deployment Workflow
 
+### 6.1 Local Execution
+
+_Install dependencies:_
+```bash
 pip install -r requirements.txt
+```
 
-
-Node:
-
-npm install
-
-
-Run Locally
-
-Start the application on your local machine.
-
-Python:
-
+_Run application:_
+```bash
 python app/main.py
+```
 
+### 6.2 Docker Build
+```bash
+docker build -t product-api .
+docker run -p 8080:8080 product-api
+```
 
-Node:
-
-npm start
-
-
-The API will typically be available at http://localhost:8080.
-
-Run Tests
-
-Ensure the application is functioning correctly before deployment.
-
-Python (using pytest):
-
-pytest
-
-
-Node:
-
-npm test
-
-
-🐳 Docker Usage
-
-You can build and run the application as a Docker container locally.
-
-Build Docker Image
-
-docker build -t app:latest .
-
-
-Run Container
-
-This command maps the container's port 8080 to your host's port 8080.
-
-docker run -p 8080:8080 app:latest
-
-
-🏗️ Terraform Infrastructure Setup
-
-The infrastructure must be provisioned before deploying the application to GKE.
-
-1. Configure Cloud Credentials
-
-Ensure your gcloud CLI is authenticated and configured for the correct project.
-
-gcloud auth application-default login
-gcloud config set project [YOUR_GCP_PROJECT_ID]
-
-
-2. Initialize Terraform
-
-Navigate to the terraform/ directory to initialize the environment.
-
-cd terraform/
-terraform init
-
-
-3. Validate Configuration
-
-Check for syntax errors in your IaC.
-
-terraform validate
-
-
-4. Apply Infrastructure
-
-Provision all necessary Google Cloud resources. Review the plan before approving!
-
-terraform apply -auto-approve
-
-
-Terraform Creates:
-
-VPC + Subnets
-
-GKE Cluster
-
-Node Pools (with autoscaling)
-
-Cloud SQL Instance (PostgreSQL)
-
-Private Service Networking
-
-Service Accounts + IAM Roles
-
-Artifact Registry repository
-
-☸️ Deploying to Kubernetes (GKE)
-
-Once the GKE cluster is provisioned via Terraform, you can deploy the application using the Kubernetes manifests.
-
-1. Get GKE Credentials
-
-Configure kubectl to connect to your newly created GKE cluster.
-
-gcloud container clusters get-credentials [CLUSTER_NAME] --region [REGION]
-
-
-(The cluster name and region can be found in the Terraform outputs.)
-
-2. Apply Kubernetes Manifests
-
-Apply the Deployment, Service, ConfigMap, and Secret to the cluster.
-
+### 6.3 Kubernetes Deployment
+```bash
 kubectl apply -f k8s/
-
-
-3. Check Resources
-
-Verify that the pods are running and the service is created.
-
 kubectl get pods
 kubectl get svc
+```
+
+### 6.4 Terraform Infrastructure Deployment
+```bash
+cd terraform/
+terraform init
+terraform apply -auto-approve
+```
+
+---
+
+## 7. CI/CD Pipeline Overview
+
+The CI/CD pipeline automates the complete delivery workflow:
+
+**Build Stage**
+- Docker image creation
+- Tagging using commit SHA
+- Push to Artifact Registry
+
+**Deployment Stage**
+- Trigger rolling update in GKE
+- Update Kubernetes Deployment manifest
+
+**Post-Deployment Validation**
+- Integration tests
+- Health checks
+- Automated endpoint verification
+
+---
+
+## 8. Security Framework
+
+- IAM least-privilege for GKE, Cloud Build, SQL access
+- Kubernetes Secrets for DB credentials
+- API-level authentication via API key 
 
 
-4. Get the External IP
+---
 
-The app-service of type LoadBalancer will receive an External IP after a few minutes, making the API accessible.
+## 9. Monitoring & Observability
 
-kubectl get svc app-service
+**Logging**
+- Application logs forwarded to Cloud Logging
+- Pod-level logs accessible via `kubectl logs`
 
+**Monitoring**
+- Metrics tracked:
+  - Request latency
+  - Error rate
+  - CPU & memory usage
+- Custom dashboards and alert policies configured in Cloud Monitoring
 
-🔄 CI/CD — Cloud Build Pipeline
+---
 
-The cloudbuild.yaml defines an automated pipeline that connects GitHub pushes directly to deployment on GKE.
+## 10. Troubleshooting Guide
 
-Pipeline Steps
+| Issue             | Description                       | Resolution                           |
+| ----------------- | --------------------------------- | ------------------------------------- |
+| CrashLoopBackOff  | App failing to start              | Validate Secrets/ConfigMaps           |
+| SQL Connection Error | Incorrect networking or credentials | Ensure Private IP + correct IAM roles |
+| ImagePullError    | GKE unable to fetch container     | Grant Artifact Registry permissions   |
+| No External IP    | Service misconfiguration          | Set Service type to LoadBalancer      |
+| 503 / Ingress Issues | Routing failure                 | Validate Ingress + Service selectors  |
 
-Build: Builds the Docker image from the Dockerfile.
-
-Test: Runs the application's test suite.
-
-Docker Push: Pushes the versioned image to Artifact Registry.
-
-Deploy to GKE: Connects to the GKE cluster and applies the Kubernetes manifests (k8s/), initiating a new rolling deployment.
-
-Triggered When:
-
-Code is pushed to the main or release branches.
-
-Manual build trigger is initiated in the Google Cloud Build console.
-
-Configuration File
-
-The entire CI/CD process is defined in: cloudbuild.yaml
-
-🗄️ API Endpoints (Example)
-
-The application exposes the following REST endpoints:
-
-Method
-
-Endpoint
-
-Description
-
-GET
-
-/products
-
-Returns the list of all products from Cloud SQL.
-
-POST
-
-/products
-
-Adds a new product to the database.
-
-GET
-
-/health
-
-Checks the service status.
-
-Example Request (POST /products)
-
-{
-  "name": "Laptop",
-  "price": 55000
-}
-
-
-Example Response (GET /health)
-
-{
-  "status": "ok"
-}
-
-
-📊 Monitoring & Logging
-
-Monitoring and logging are enabled by default for GKE clusters:
-
-Google Cloud Logging: Centralized collection of container logs.
-
-Check logs: kubectl logs <pod-name>
-
-Google Cloud Monitoring: Performance metrics for GKE, VMs, and the Load Balancer.
+---
