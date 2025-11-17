@@ -11,9 +11,9 @@ locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 #  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 
 # Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
@@ -80,16 +80,19 @@ resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
   database_version = "POSTGRES_15"
   region           = var.region
-   
 
   settings {
     tier = "db-f1-micro"
 
     ip_configuration {
-  ipv4_enabled    = false
-  private_network = "projects/my-project-app-477009/global/networks/gke-secure-vpc1"
-}
+      ipv4_enabled = true
 
+      # ⚠️ Not modifying as per your request
+      authorized_networks {
+        name  = "any"
+        value = "0.0.0.0/0"
+      }
+    }
   }
 }
 
