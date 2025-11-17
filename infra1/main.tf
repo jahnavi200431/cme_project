@@ -74,11 +74,17 @@ resource "google_container_cluster" "gke" {
   # MASTER AUTHORIZED NETWORKS
   # -------------------------------
   master_authorized_networks_config {
-    cidr_blocks {
-      display_name = "admin-access"
-      cidr_block   = var.admin_ip_cidr  # e.g. "45.118.72.180/32"
-    }
+  cidr_blocks {
+    display_name = "admin-access"
+    cidr_block   = var.admin_ip_cidr
   }
+
+  cidr_blocks {
+    display_name = "google-cloud"
+    cidr_block   = "35.235.240.0/20"
+  }
+}
+
 
   ip_allocation_policy {}
 }
