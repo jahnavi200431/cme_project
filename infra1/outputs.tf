@@ -8,6 +8,7 @@ output "postgres_public_ip" {
   value       = google_sql_database_instance.postgres.public_ip_address
 }
 
+
 output "node_service_account" {
   description = "Service account used by the GKE node pool"
   value       = local.node_sa
