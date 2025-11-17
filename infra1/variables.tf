@@ -20,3 +20,8 @@ variable "db_password" {
   type      = string
   sensitive = true
 }
+variable "admin_ip_cidr" {
+  description = "Your public IP in CIDR format to allow GKE access"
+  type        = string
+}
+
