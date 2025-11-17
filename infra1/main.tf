@@ -49,7 +49,7 @@ resource "google_compute_subnetwork" "gke_subnet" {
 }
 
 # -------------------------------------------------------------
-#  UPDATED GKE CLUSTER (PRIVATE NODES + MASTER AUTHORIZED)
+#  UPDATED GKE CLUSTER (PRIVATE NODES + MAN + PUBLIC ENDPOINT)
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
@@ -58,18 +58,27 @@ resource "google_container_cluster" "gke" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # -- Secure network instead of default --
   network    = google_compute_network.gke_vpc.self_link
   subnetwork = google_compute_subnetwork.gke_subnet.self_link
 
+  # -------------------------------
+  # PRIVATE NODES + PUBLIC CONTROL PLANE
+  # -------------------------------
   private_cluster_config {
-  enable_private_nodes    = true
-  enable_private_endpoint = true   # ← Only private endpoint
-  master_ipv4_cidr_block  = "172.16.0.0/28"
-}
+    enable_private_nodes    = true
+    enable_private_endpoint = false   # 👈 KEEP THIS FALSE (Cloud Build needs access)
+    master_ipv4_cidr_block  = "172.16.0.0/28"
+  }
 
-master_authorized_networks_config {} # leave empty or remove
-
+  # -------------------------------
+  # MASTER AUTHORIZED NETWORKS
+  # -------------------------------
+  master_authorized_networks_config {
+    cidr_blocks {
+      display_name = "admin-access"
+      cidr_block   = var.admin_ip_cidr  # e.g. "45.118.72.180/32"
+    }
+  }
 
   ip_allocation_policy {}
 }
@@ -97,7 +106,7 @@ resource "google_container_node_pool" "node_pool" {
 }
 
 # -------------------------------------------------------------
-#  CLOUD SQL INSTANCE (UNTOUCHED)
+#  CLOUD SQL INSTANCE (UNCHANGED)
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
