@@ -37,12 +37,12 @@ resource "google_project_iam_member" "cloudsql_client" {
 #  SECURE VPC & SUBNET FOR GKE
 # -------------------------------------------------------------
 resource "google_compute_network" "gke_vpc" {
-  name                    = "gke-secure-vpc"
+  name                    = "gke-secure-vpc1"
   auto_create_subnetworks = false
 }
 
 resource "google_compute_subnetwork" "gke_subnet" {
-  name          = "gke-secure-subnet"
+  name          = "gke-secure-subnet1"
   region        = var.region
   network       = google_compute_network.gke_vpc.self_link
   ip_cidr_range = "10.50.0.0/20"
