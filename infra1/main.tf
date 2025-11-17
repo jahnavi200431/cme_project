@@ -62,20 +62,14 @@ resource "google_container_cluster" "gke" {
   network    = google_compute_network.gke_vpc.self_link
   subnetwork = google_compute_subnetwork.gke_subnet.self_link
 
-  # Enable private nodes (no public IPs)
   private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = false
-    master_ipv4_cidr_block  = "172.16.0.0/28"
-  }
+  enable_private_nodes    = true
+  enable_private_endpoint = true   # ← Only private endpoint
+  master_ipv4_cidr_block  = "172.16.0.0/28"
+}
 
-  # Restrict access to Kubernetes API
-  master_authorized_networks_config {
-    cidr_blocks {
-      cidr_block   = var.admin_ip_cidr   
-      display_name = "admin-access"
-    }
-  }
+master_authorized_networks_config {} # leave empty or remove
+
 
   ip_allocation_policy {}
 }
