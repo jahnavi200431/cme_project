@@ -48,6 +48,7 @@ steps:
           echo "⚠ .env file not found!"
           exit 1
         fi
+        cd app
         pip install -r requirements.txt
         INIT_DB_ONLY=true python app.py
   # ----------------------------------------------------------
