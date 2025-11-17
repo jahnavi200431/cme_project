@@ -81,13 +81,13 @@ resource "google_sql_database_instance" "postgres" {
   database_version = "POSTGRES_15"
   region           = var.region
 
-  deletion_protection = false  # <- add this
-
   settings {
     tier = "db-f1-micro"
 
     ip_configuration {
-      ipv4_enabled    = true
+      ipv4_enabled = true
+
+      # ⚠️ Not modifying as per your request
       authorized_networks {
         name  = "any"
         value = "0.0.0.0/0"
