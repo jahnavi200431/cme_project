@@ -5,14 +5,14 @@ provider "google" {
 }
 
 # -------------------------------------------------------------
-#  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
-# ------------------------------------------------------------
+# USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
+# -------------------------------------------------------------
 locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
 # -------------------------------------------------------------
-#  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
+# IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
@@ -33,7 +33,7 @@ resource "google_project_iam_member" "cloudsql_client" {
 }
 
 # -------------------------------------------------------------
-#  GKE CLUSTER
+# GKE CLUSTER
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
@@ -41,24 +41,22 @@ resource "google_container_cluster" "gke" {
   deletion_protection      = false
   remove_default_node_pool = true
   initial_node_count       = 1
-
-  network = "default"
+  network                  = "default"
 
   private_cluster_config {
-    enable_private_nodes     = true
-    enable_private_endpoint  = false
-    master_ipv4_cidr_block   = "172.16.0.0/28"
+    enable_private_nodes    = true
+    enable_private_endpoint = false
+    master_ipv4_cidr_block  = "172.16.0.0/28"
   }
 }
 
 # -------------------------------------------------------------
-#  NODE POOL USING YOUR SERVICE ACCOUNT
+# NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
 resource "google_container_node_pool" "private_node_pool1" {
   name     = "private-node-pool1"
   cluster  = google_container_cluster.gke.name
   location = var.zone
-
   initial_node_count = 2
 
   node_config {
@@ -89,24 +87,7 @@ resource "google_container_node_pool" "private_node_pool1" {
 }
 
 # -------------------------------------------------------------
-#  CLOUD NAT FOR PRIVATE NODES
-# -------------------------------------------------------------
-resource "google_compute_router" "nat_router1" {
-  name    = "nat-router1"
-  network = "default"
-  region  = var.region
-}
-
-resource "google_compute_router_nat" "nat_config1" {
-  name                              = "nat-config1"
-  router                            = google_compute_router.nat_router1.name
-  region                            = google_compute_router.nat_router1.region
-  nat_ip_allocate_option             = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-}
-
-# -------------------------------------------------------------
-#  CLOUD SQL INSTANCE (PUBLIC)
+# CLOUD SQL INSTANCE (PRIVATE)
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -117,13 +98,8 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
 
     ip_configuration {
-      ipv4_enabled = true
-
-      # Allow connections from anywhere (0.0.0.0/0)
-      authorized_networks {
-        name  = "any"
-        value = "0.0.0.0/0"
-      }
+      ipv4_enabled    = false
+      private_network = "projects/${var.project_id}/global/networks/default"
     }
   }
 }
