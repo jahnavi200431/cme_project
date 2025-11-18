@@ -270,6 +270,7 @@ def add_product():
 def update_product(product_id):
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
+
     data = request.get_json()
     if not data.get("name") or data.get("price") is None:
         return {"error": "name and price are required"}, 400
@@ -277,28 +278,35 @@ def update_product(product_id):
     conn = get_db_connection()
     if not conn:
         return {"error": "DB connection failed"}, 500
+
     try:
         cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
+        # check if product exists
+        cur.execute("SELECT quantity FROM product WHERE id=%s;", (product_id,))
+        row = cur.fetchone()
+        if not row:
             return {"error": "Product not found"}, 404
+
+        current_quantity = row[0]
 
         cur.execute("""
             UPDATE product
             SET name=%s,
                 description=%s,
                 price=%s,
-                quantity=COALESCE(%s, quantity)
+                quantity=%s
             WHERE id=%s;
         """, (
             data.get("name"),
             data.get("description"),
             data.get("price"),
-            data.get("quantity"),
+            data.get("quantity", current_quantity),  # use existing if missing
             product_id
         ))
+
         conn.commit()
         return {"message": "Product updated!"}, 200
+
     finally:
         cur.close()
         conn.close()
