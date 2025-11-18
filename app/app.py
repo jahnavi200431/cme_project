@@ -173,7 +173,9 @@ def create_table_if_not_exists():
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
-                quantity INT DEFAULT 0
+                quantity INT DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, 
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
         conn.commit()
