@@ -10,10 +10,9 @@ app = Flask(__name__)
 
 # -------------------------------------------------------
 # JSON LOGGING (CLOUD LOGGING FRIENDLY)
-# ---------------------------------------------------------
+# -------------------------------------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
-
         log = {
             "severity": record.levelname,
             "app": "gke-rest-api",
@@ -44,7 +43,6 @@ werk = logging.getLogger("werkzeug")
 werk.setLevel(logging.INFO)
 werk.handlers = []
 werk.addHandler(json_handler)
-
 
 # ---------------------------------------------------------
 # WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
@@ -110,7 +108,6 @@ class RequestResponseLoggerMiddleware:
 # Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
-
 # ---------------------------------------------------------
 # API KEY CHECK
 # ---------------------------------------------------------
@@ -118,26 +115,24 @@ API_KEY = os.getenv("API_KEY")
 
 
 def require_api_key():
+    provided_key = (
+        request.headers.get("X-API-KEY")
+        or request.headers.get("x-api-key")
+        or request.headers.get("Authorization")
+    )
 
-        provided_key = (
-            request.headers.get("X-API-KEY")
-            or request.headers.get("x-api-key")
-            or request.headers.get("Authorization")
-        )
+    if API_KEY is None:
+        logger.error({"event": "api_key_env_missing"})
+        return False
 
-        if API_KEY is None:
-            logger.error({"event": "api_key_env_missing"})
-            return False
+    if provided_key != API_KEY:
+        logger.warning({
+            "event": "auth_failed",
+            "provided_key": provided_key
+        })
+        return False
 
-        if provided_key != API_KEY:
-            logger.warning({
-                "event": "auth_failed",
-                "provided_key": provided_key
-            })
-            return False
-
-        return True
-
+    return True
 
 # ---------------------------------------------------------
 # HEALTH CHECKS
@@ -154,7 +149,6 @@ def readiness():
         conn.close()
         return {"status": "ready"}, 200
     return {"status": "not ready"}, 500
-
 
 # ---------------------------------------------------------
 # DATABASE CONFIG
@@ -192,9 +186,10 @@ def create_table_if_not_exists():
 
     try:
         cur = conn.cursor()
+        # Use SERIAL for auto-increment ID
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
-                id INT PRIMARY KEY,
+                id SERIAL PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
@@ -203,7 +198,8 @@ def create_table_if_not_exists():
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        # Optional: add trigger for automatic updated_at update
+
+        # Trigger for automatic updated_at
         cur.execute("""
             CREATE OR REPLACE FUNCTION update_updated_at_column()
             RETURNS TRIGGER AS $$
@@ -213,15 +209,15 @@ def create_table_if_not_exists():
             END;
             $$ language 'plpgsql';
         """)
-        cur.execute("""
-            DROP TRIGGER IF EXISTS set_updated_at ON product;
-        """)
+
+        cur.execute("DROP TRIGGER IF EXISTS set_updated_at ON product;")
         cur.execute("""
             CREATE TRIGGER set_updated_at
             BEFORE UPDATE ON product
             FOR EACH ROW
             EXECUTE FUNCTION update_updated_at_column();
         """)
+
         conn.commit()
         logger.info({"event": "table_created"})
     except Exception as e:
@@ -229,8 +225,6 @@ def create_table_if_not_exists():
     finally:
         cur.close()
         conn.close()
-
-
 
 # ---------------------------------------------------------
 # ROUTES
@@ -279,7 +273,6 @@ def get_product(product_id):
 
 @app.route("/products", methods=["POST"])
 def add_product():
-
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
@@ -305,7 +298,6 @@ def add_product():
         conn.commit()
         new_id = cur.fetchone()[0]
         return {"message": "Product added!", "id": new_id}, 201
-
     finally:
         cur.close()
         conn.close()
@@ -313,11 +305,12 @@ def add_product():
 
 @app.route("/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
-
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
     data = request.get_json()
+    if not data.get("name") or data.get("price") is None:
+        return {"error": "name and price are required"}, 400
 
     conn = get_db_connection()
     if not conn:
@@ -329,9 +322,13 @@ def update_product(product_id):
         if not cur.fetchone():
             return {"error": "Product not found"}, 404
 
+        # Use COALESCE for quantity to prevent NULL errors
         cur.execute("""
             UPDATE product
-            SET name=%s, description=%s, price=%s, quantity=%s
+            SET name=%s,
+                description=%s,
+                price=%s,
+                quantity=COALESCE(%s, quantity)
             WHERE id=%s;
         """, (
             data.get("name"),
@@ -343,7 +340,6 @@ def update_product(product_id):
 
         conn.commit()
         return {"message": "Product updated!"}, 200
-
     finally:
         cur.close()
         conn.close()
@@ -351,7 +347,6 @@ def update_product(product_id):
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
-
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
@@ -368,11 +363,9 @@ def delete_product(product_id):
         cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
         conn.commit()
         return {"message": "Product deleted!"}, 200
-
     finally:
         cur.close()
         conn.close()
-
 
 # ---------------------------------------------------------
 # START SERVER
