@@ -291,12 +291,10 @@ def add_product():
 
 @app.route("/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
-
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
 
     data = request.get_json()
-
     if not data.get("name") or data.get("price") is None:
         return {"error": "name and price are required"}, 400
 
@@ -306,7 +304,6 @@ def update_product(product_id):
 
     try:
         cur = conn.cursor()
-        # Check if product exists and get current quantity
         cur.execute("SELECT quantity FROM product WHERE id=%s;", (product_id,))
         row = cur.fetchone()
         if not row:
@@ -314,7 +311,15 @@ def update_product(product_id):
 
         current_quantity = row[0]
 
-        # Use existing quantity if not provided in payload
+        # Safe conversion
+        quantity = data.get("quantity")
+        if quantity is None:
+            quantity = current_quantity
+        else:
+            quantity = int(quantity)
+
+        price = float(data.get("price"))
+
         cur.execute("""
             UPDATE product
             SET name=%s,
@@ -325,11 +330,10 @@ def update_product(product_id):
         """, (
             data.get("name"),
             data.get("description"),
-            data.get("price"),
-            data.get("quantity", current_quantity),
+            price,
+            quantity,
             product_id
         ))
-
         conn.commit()
         return {"message": "Product updated!"}, 200
 
