@@ -295,6 +295,8 @@ def update_product(product_id):
         return {"error": "Unauthorized"}, 401
 
     data = request.get_json()
+
+    # Validate required fields
     if not data.get("name") or data.get("price") is None:
         return {"error": "name and price are required"}, 400
 
@@ -304,6 +306,8 @@ def update_product(product_id):
 
     try:
         cur = conn.cursor()
+
+        # Check if product exists and get current quantity
         cur.execute("SELECT quantity FROM product WHERE id=%s;", (product_id,))
         row = cur.fetchone()
         if not row:
@@ -311,13 +315,14 @@ def update_product(product_id):
 
         current_quantity = row[0]
 
-        # Safe conversion
+        # Determine quantity safely
         quantity = data.get("quantity")
         if quantity is None:
             quantity = current_quantity
         else:
             quantity = int(quantity)
 
+        # Ensure price is float
         price = float(data.get("price"))
 
         cur.execute("""
@@ -334,12 +339,14 @@ def update_product(product_id):
             quantity,
             product_id
         ))
+
         conn.commit()
         return {"message": "Product updated!"}, 200
 
     finally:
         cur.close()
         conn.close()
+
 
 
 @app.route("/products/<int:product_id>", methods=["DELETE"])
