@@ -198,8 +198,29 @@ def create_table_if_not_exists():
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
-                quantity INT DEFAULT 0
+                quantity INT DEFAULT 0,
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+                updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
+        """)
+        # Optional: add trigger for automatic updated_at update
+        cur.execute("""
+            CREATE OR REPLACE FUNCTION update_updated_at_column()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                NEW.updated_at = NOW();
+                RETURN NEW;
+            END;
+            $$ language 'plpgsql';
+        """)
+        cur.execute("""
+            DROP TRIGGER IF EXISTS set_updated_at ON product;
+        """)
+        cur.execute("""
+            CREATE TRIGGER set_updated_at
+            BEFORE UPDATE ON product
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
         """)
         conn.commit()
         logger.info({"event": "table_created"})
@@ -208,6 +229,7 @@ def create_table_if_not_exists():
     finally:
         cur.close()
         conn.close()
+
 
 
 # ---------------------------------------------------------
