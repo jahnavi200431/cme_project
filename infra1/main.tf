@@ -6,7 +6,7 @@ provider "google" {
 
 # -------------------------------------------------------------
 #  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
-# -------------------------------------------------------------
+# ------------------------------------------------------------
 locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
