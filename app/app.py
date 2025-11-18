@@ -9,13 +9,13 @@ import io
 app = Flask(__name__)
 
 # -------------------------------------------------------
-# JSON LOGGING (CLOUD LOGGING FRIENDLY)
+# JSON LOGGING
 # -------------------------------------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
             "severity": record.levelname,
-            "app": "gke-rest-api",
+            "app": "product-api",
             "version": "1.0.0",
         }
         if isinstance(record.msg, dict):
@@ -23,7 +23,6 @@ class JsonFormatter(logging.Formatter):
         else:
             log["message"] = record.getMessage()
         return json.dumps(log)
-
 
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
@@ -33,7 +32,7 @@ root.setLevel(logging.INFO)
 root.handlers = []
 root.addHandler(json_handler)
 
-logger = logging.getLogger("gke-rest-api")
+logger = logging.getLogger("product-api")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
@@ -43,7 +42,7 @@ werk.handlers = []
 werk.addHandler(json_handler)
 
 # ---------------------------------------------------------
-# WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
+# WSGI MIDDLEWARE — LOG REQUEST & RESPONSE
 # ---------------------------------------------------------
 class RequestResponseLoggerMiddleware:
     def __init__(self, app):
@@ -70,11 +69,8 @@ class RequestResponseLoggerMiddleware:
 
         def custom_start_response(status, headers, exc_info=None):
             nonlocal response_body_chunks
-            def write(body):
-                response_body_chunks.append(body)
-                return start_response(status, headers, exc_info)
             start_response(status, headers, exc_info)
-            return write
+            return lambda body: response_body_chunks.append(body)
 
         result = self.app(environ, custom_start_response)
 
@@ -116,21 +112,6 @@ def require_api_key():
         logger.warning({"event": "auth_failed", "provided_key": provided_key})
         return False
     return True
-
-# ---------------------------------------------------------
-# HEALTH CHECKS
-# ---------------------------------------------------------
-@app.route('/health', methods=['GET'])
-def health():
-    return {"status": "healthy"}, 200
-
-@app.route('/ready', methods=['GET'])
-def readiness():
-    conn = get_db_connection(check_only=True)
-    if conn:
-        conn.close()
-        return {"status": "ready"}, 200
-    return {"status": "not ready"}, 500
 
 # ---------------------------------------------------------
 # DATABASE CONFIG
@@ -175,7 +156,7 @@ def create_table_if_not_exists():
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
-        # Trigger for automatic updated_at
+        # Trigger to auto-update updated_at
         cur.execute("""
             CREATE OR REPLACE FUNCTION update_updated_at_column()
             RETURNS TRIGGER AS $$
@@ -205,7 +186,7 @@ def create_table_if_not_exists():
 # ---------------------------------------------------------
 @app.route("/")
 def home():
-    return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
+    return {"message": "Welcome to Product API"}, 200
 
 @app.route("/products", methods=["GET"])
 def get_products():
@@ -270,25 +251,19 @@ def add_product():
 def update_product(product_id):
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
-
     data = request.get_json()
     if not data.get("name") or data.get("price") is None:
         return {"error": "name and price are required"}, 400
-
     conn = get_db_connection()
     if not conn:
         return {"error": "DB connection failed"}, 500
-
     try:
         cur = conn.cursor()
-        # check if product exists
         cur.execute("SELECT quantity FROM product WHERE id=%s;", (product_id,))
         row = cur.fetchone()
         if not row:
             return {"error": "Product not found"}, 404
-
         current_quantity = row[0]
-
         cur.execute("""
             UPDATE product
             SET name=%s,
@@ -300,13 +275,11 @@ def update_product(product_id):
             data.get("name"),
             data.get("description"),
             data.get("price"),
-            data.get("quantity", current_quantity),  # use existing if missing
+            data.get("quantity", current_quantity),
             product_id
         ))
-
         conn.commit()
         return {"message": "Product updated!"}, 200
-
     finally:
         cur.close()
         conn.close()
@@ -338,7 +311,6 @@ if __name__ == "__main__":
     if os.getenv("INIT_DB_ONLY") == "true":
         create_table_if_not_exists()
         sys.exit(0)
-
     create_table_if_not_exists()
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
