@@ -255,40 +255,28 @@ def update_product(product_id):
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
     data = request.get_json()
-    if not data.get("name") or data.get("price") is None:
-        return {"error": "name and price are required"}, 400
-
+     
     conn = get_db_connection()
     if not conn:
-        return {"error": "DB connection failed"}, 500
+        return {"error": "Database connection failed"}, 500
 
     try:
         cur = conn.cursor()
-        cur.execute("SELECT quantity FROM product WHERE id=%s;", (product_id,))
-        row = cur.fetchone()
-        if not row:
+        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
+        if not cur.fetchone():
             return {"error": "Product not found"}, 404
-
-        current_quantity = row[0]
-        quantity = int(data.get("quantity", current_quantity))
-        price = float(data.get("price"))
 
         cur.execute("""
             UPDATE product
-            SET name=%s,
-                description=%s,
-                price=%s,
-                quantity=%s
+            SET name=%s, description=%s, price=%s, quantity=%s
             WHERE id=%s;
-        """, (
-            data.get("name"),
-            data.get("description"),
-            price,
-            quantity,
-            product_id
-        ))
+        """, (data.get("name"), data.get("description"),
+              data.get("price"), data.get("quantity"), product_id))
         conn.commit()
-        return {"message": "Product updated!"}, 200
+
+        return {"message": f"Product {product_id} updated!"}
+    except Exception as e:
+        return {"error": str(e)}, 500
     finally:
         cur.close()
         conn.close()
