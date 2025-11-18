@@ -4,7 +4,7 @@ provider "google" {
   zone    = var.zone
 }
 
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 #  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
 # -------------------------------------------------------------
 locals {
@@ -14,21 +14,18 @@ locals {
 # -------------------------------------------------------------
 #  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
-# Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
-# Allow GKE nodes to write monitoring metrics
 resource "google_project_iam_member" "metricwriter" {
   project = var.project_id
   role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
-# Allow GKE nodes to access Cloud SQL
 resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -48,17 +45,17 @@ resource "google_container_cluster" "gke" {
   network = "default"
 
   private_cluster_config {
-    enable_private_nodes = true
-    enable_private_endpoint = false
-    master_ipv4_cidr_block = "172.16.0.0/28"
+    enable_private_nodes     = true
+    enable_private_endpoint  = false
+    master_ipv4_cidr_block   = "172.16.0.0/28"
   }
 }
 
 # -------------------------------------------------------------
 #  NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
-resource "google_container_node_pool" "private_node_pool" {
-  name     = "private-node-pool"
+resource "google_container_node_pool" "private_node_pool1" {
+  name     = "private-node-pool1"
   cluster  = google_container_cluster.gke.name
   location = var.zone
 
@@ -68,7 +65,6 @@ resource "google_container_node_pool" "private_node_pool" {
     machine_type    = "e2-medium"
     disk_size_gb    = 50
     disk_type       = "pd-standard"
-
     service_account = local.node_sa
 
     oauth_scopes = [
@@ -93,7 +89,24 @@ resource "google_container_node_pool" "private_node_pool" {
 }
 
 # -------------------------------------------------------------
-#  CLOUD SQL INSTANCE (UNCHANGED)
+#  CLOUD NAT FOR PRIVATE NODES
+# -------------------------------------------------------------
+resource "google_compute_router" "nat_router1" {
+  name    = "nat-router1"
+  network = "default"
+  region  = var.region
+}
+
+resource "google_compute_router_nat" "nat_config1" {
+  name                              = "nat-config1"
+  router                            = google_compute_router.nat_router.name
+  region                            = google_compute_router.nat_router.region
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
+}
+
+# -------------------------------------------------------------
+#  CLOUD SQL INSTANCE (PUBLIC)
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -106,6 +119,7 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled = true
 
+      # Allow connections from anywhere (0.0.0.0/0)
       authorized_networks {
         name  = "any"
         value = "0.0.0.0/0"
@@ -114,13 +128,11 @@ resource "google_sql_database_instance" "postgres" {
   }
 }
 
-# Create DB
 resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
 }
 
-# Create DB user
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
