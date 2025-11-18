@@ -4,17 +4,16 @@ provider "google" {
   zone    = var.zone
 }
 
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 #  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
-# ------------------------------------------------------------
+# -------------------------------------------------------------
 #  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
-
 # Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
@@ -47,20 +46,29 @@ resource "google_container_cluster" "gke" {
   initial_node_count       = 1
 
   network = "default"
+
+  private_cluster_config {
+    enable_private_nodes = true
+    enable_private_endpoint = false
+    master_ipv4_cidr_block = "172.16.0.0/28"
+  }
 }
 
 # -------------------------------------------------------------
 #  NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
-resource "google_container_node_pool" "node_pool" {
-  name     = "api-node-pool"
+resource "google_container_node_pool" "private_node_pool" {
+  name     = "private-node-pool"
   cluster  = google_container_cluster.gke.name
   location = var.zone
 
-  node_config {
-    machine_type    = "e2-small"
+  initial_node_count = 2
 
-    # ✔ Your custom service account
+  node_config {
+    machine_type    = "e2-medium"
+    disk_size_gb    = 50
+    disk_type       = "pd-standard"
+
     service_account = local.node_sa
 
     oauth_scopes = [
@@ -68,13 +76,24 @@ resource "google_container_node_pool" "node_pool" {
       "https://www.googleapis.com/auth/monitoring",
       "https://www.googleapis.com/auth/cloud-platform"
     ]
+
+    metadata = {
+      disable-legacy-endpoints = "true"
+    }
+
+    labels = {
+      type = "private"
+    }
   }
 
-  initial_node_count = 2
+  management {
+    auto_upgrade = true
+    auto_repair  = false
+  }
 }
 
 # -------------------------------------------------------------
-#  CLOUD SQL INSTANCE
+#  CLOUD SQL INSTANCE (UNCHANGED)
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -87,7 +106,6 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled = true
 
-      # ⚠️ Not modifying as per your request
       authorized_networks {
         name  = "any"
         value = "0.0.0.0/0"
