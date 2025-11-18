@@ -4,28 +4,32 @@ provider "google" {
   zone    = var.zone
 }
 
-# ------------------------------------------------------------
-# USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
 # -------------------------------------------------------------
+#  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
+# ------------------------------------------------------------
 locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
 # -------------------------------------------------------------
-# IAM PERMISSIONS FOR THE SERVICE ACCOUNT
+#  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
+
+# Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
+# Allow GKE nodes to write monitoring metrics
 resource "google_project_iam_member" "metricwriter" {
   project = var.project_id
   role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
+# Allow GKE nodes to access Cloud SQL
 resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -33,7 +37,7 @@ resource "google_project_iam_member" "cloudsql_client" {
 }
 
 # -------------------------------------------------------------
-# GKE CLUSTER
+#  GKE CLUSTER
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
@@ -41,28 +45,22 @@ resource "google_container_cluster" "gke" {
   deletion_protection      = false
   remove_default_node_pool = true
   initial_node_count       = 1
-  network                  = "default"
 
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = false
-    master_ipv4_cidr_block  = "172.16.0.0/28"
-  }
+  network = "default"
 }
 
 # -------------------------------------------------------------
-# NODE POOL USING YOUR SERVICE ACCOUNT
+#  NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
-resource "google_container_node_pool" "private_node_pool1" {
-  name     = "private-node-pool1"
+resource "google_container_node_pool" "node_pool" {
+  name     = "api-node-pool"
   cluster  = google_container_cluster.gke.name
   location = var.zone
-  initial_node_count = 2
 
   node_config {
-    machine_type    = "e2-medium"
-    disk_size_gb    = 50
-    disk_type       = "pd-standard"
+    machine_type    = "e2-small"
+
+    # ✔ Your custom service account
     service_account = local.node_sa
 
     oauth_scopes = [
@@ -70,24 +68,13 @@ resource "google_container_node_pool" "private_node_pool1" {
       "https://www.googleapis.com/auth/monitoring",
       "https://www.googleapis.com/auth/cloud-platform"
     ]
-
-    metadata = {
-      disable-legacy-endpoints = "true"
-    }
-
-    labels = {
-      type = "private"
-    }
   }
 
-  management {
-    auto_upgrade = true
-    auto_repair  = false
-  }
+  initial_node_count = 2
 }
 
 # -------------------------------------------------------------
-# CLOUD SQL INSTANCE (PRIVATE)
+#  CLOUD SQL INSTANCE
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -98,17 +85,24 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
 
     ip_configuration {
-      ipv4_enabled    = false
-      private_network = "projects/${var.project_id}/global/networks/default"
+      ipv4_enabled = true
+
+      # ⚠️ Not modifying as per your request
+      authorized_networks {
+        name  = "any"
+        value = "0.0.0.0/0"
+      }
     }
   }
 }
 
+# Create DB
 resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
 }
 
+# Create DB user
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
