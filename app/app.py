@@ -194,7 +194,7 @@ def create_table_if_not_exists():
         cur = conn.cursor()
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
-                id SERIAL PRIMARY KEY,
+                id INT PRIMARY KEY,
                 name VARCHAR(100) NOT NULL,
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
