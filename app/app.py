@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 # -------------------------------------------------------
 # JSON LOGGING (CLOUD LOGGING FRIENDLY)
-# -------------------------------------------------------
+# ---------------------------------------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -44,6 +44,7 @@ werk.setLevel(logging.INFO)
 werk.handlers = []
 werk.addHandler(json_handler)
 
+
 # ---------------------------------------------------------
 # WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
 # ---------------------------------------------------------
@@ -52,8 +53,6 @@ class RequestResponseLoggerMiddleware:
         self.app = app
 
     def __call__(self, environ, start_response):
-
-        # Read request body
         try:
             raw_body = environ["wsgi.input"].read()
             body_text = raw_body.decode("utf-8")
@@ -74,21 +73,14 @@ class RequestResponseLoggerMiddleware:
 
         def custom_start_response(status, headers, exc_info=None):
             nonlocal response_body_chunks
-
-            def write(body):
-                response_body_chunks.append(body)
-                return start_response(status, headers, exc_info)
-
             start_response(status, headers, exc_info)
-            return write
+            return lambda body: response_body_chunks.append(body)
 
         result = self.app(environ, custom_start_response)
 
-        # Capture response chunks
         for chunk in result:
             response_body_chunks.append(chunk)
 
-        # Convert response body
         full_response_body = b"".join(response_body_chunks)
         try:
             response_text = full_response_body.decode("utf-8")
@@ -105,7 +97,6 @@ class RequestResponseLoggerMiddleware:
         return response_body_chunks
 
 
-# Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
 # ---------------------------------------------------------
@@ -134,6 +125,7 @@ def require_api_key():
 
     return True
 
+
 # ---------------------------------------------------------
 # HEALTH CHECKS
 # ---------------------------------------------------------
@@ -149,6 +141,7 @@ def readiness():
         conn.close()
         return {"status": "ready"}, 200
     return {"status": "not ready"}, 500
+
 
 # ---------------------------------------------------------
 # DATABASE CONFIG
@@ -173,7 +166,6 @@ def get_db_connection(check_only=False):
         if not check_only:
             logger.info({"event": "db_connection_ok"})
         return conn
-
     except Exception as e:
         logger.error({"event": "db_connection_failed", "error": str(e)})
         return None
@@ -186,7 +178,6 @@ def create_table_if_not_exists():
 
     try:
         cur = conn.cursor()
-        # Use SERIAL for auto-increment ID
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 id SERIAL PRIMARY KEY,
@@ -199,7 +190,6 @@ def create_table_if_not_exists():
             );
         """)
 
-        # Trigger for automatic updated_at
         cur.execute("""
             CREATE OR REPLACE FUNCTION update_updated_at_column()
             RETURNS TRIGGER AS $$
@@ -207,7 +197,7 @@ def create_table_if_not_exists():
                 NEW.updated_at = NOW();
                 RETURN NEW;
             END;
-            $$ language 'plpgsql';
+            $$ LANGUAGE 'plpgsql';
         """)
 
         cur.execute("DROP TRIGGER IF EXISTS set_updated_at ON product;")
@@ -225,6 +215,7 @@ def create_table_if_not_exists():
     finally:
         cur.close()
         conn.close()
+
 
 # ---------------------------------------------------------
 # ROUTES
@@ -277,6 +268,8 @@ def add_product():
         return {"error": "Unauthorized"}, 401
 
     data = request.get_json()
+    if not data.get("name") or data.get("price") is None:
+        return {"error": "name and price are required"}, 400
 
     conn = get_db_connection()
     if not conn:
@@ -322,7 +315,6 @@ def update_product(product_id):
         if not cur.fetchone():
             return {"error": "Product not found"}, 404
 
-        # Use COALESCE for quantity to prevent NULL errors
         cur.execute("""
             UPDATE product
             SET name=%s,
@@ -366,6 +358,7 @@ def delete_product(product_id):
     finally:
         cur.close()
         conn.close()
+
 
 # ---------------------------------------------------------
 # START SERVER
