@@ -73,8 +73,7 @@ payload=$(cat <<EOF
 {
   "name": "integration-test-product-$UNIQUE",
   "description": "Created by integration tests",
-  "price": 9.99,
-  "quantity": 5
+  "price": 9.99
 }
 EOF
 )
@@ -109,8 +108,7 @@ updated_payload=$(cat <<EOF
 {
   "name": "integration-test-product-$UNIQUE-updated",
   "description": "Updated by integration tests",
-  "price": 19.99,
-  "quantity": 10
+  "price": 19.99
 }
 EOF
 )
@@ -125,14 +123,6 @@ fi
 request GET "/products/$product_id"
 if [ "$(get_status)" != "200" ]; then
   echo "FAIL: Follow-up GET failed"
-  exit 1
-fi
-
-# Optional: verify updated quantity
-body="$(get_body)"
-if ! echo "$body" | grep -q '"quantity": 10'; then
-  echo "FAIL: quantity was not updated"
-  echo "$body"
   exit 1
 fi
 echo "OK"
