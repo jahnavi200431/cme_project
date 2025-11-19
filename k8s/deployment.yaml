@@ -35,20 +35,19 @@ spec:
         app: gke-rest-api
     spec:
       containers:
-        # -------------------------------
-        # Main application container
-        # -------------------------------
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
             - containerPort: 8080
+
           readinessProbe:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 30   # Give time to connect to DB
             periodSeconds: 10
             failureThreshold: 10
+
           livenessProbe:
             httpGet:
               path: /health
@@ -56,6 +55,7 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 5
+
           resources:
             requests:
               cpu: "100m"
@@ -63,9 +63,13 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+
           env:
             - name: DB_HOST
-              value: 127.0.0.1
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_HOST
             - name: DB_NAME
               valueFrom:
                 secretKeyRef:
@@ -82,31 +86,15 @@ spec:
                   name: db-credentials
                   key: DB_PASS
             - name: DB_PORT
-              value: "5432"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PORT
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: API_KEY
-
-        # -------------------------------
-        # Cloud SQL Proxy sidecar
-        # -------------------------------
-        - name: cloud-sql-proxy
-          image: gcr.io/cloudsql-docker/gce-proxy:1.33.2
-          command:
-            - "/cloud_sql_proxy"
-            - "-instances=my-project-app-477009:us-central1:product-db-instance=tcp:5432"
-            - "-credential_file=/secrets/cloudsql/credentials.json"
-          volumeMounts:
-            - name: cloudsql-creds
-              mountPath: /secrets/cloudsql
-              readOnly: true
-
-      volumes:
-        - name: cloudsql-creds
-          secret:
-            secretName: cloud-sql-key
 
 ---
 
