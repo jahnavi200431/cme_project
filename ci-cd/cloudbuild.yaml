@@ -15,20 +15,27 @@ availableSecrets:
       env: "_CLOUD_SQL_KEY"
 
 steps:
+  # ------------------------------------------------------
   # 0) Initialize DB via Cloud SQL Proxy
-  - name: gcr.io/cloud-builders/bash
+  # ------------------------------------------------------
+  - name: ubuntu
     id: "Init DB via Cloud SQL Proxy"
     secretEnv: ["_CLOUD_SQL_KEY"]
     entrypoint: bash
     args:
       - "-c"
       - |
-        echo "🔐 Writing service account key..."
+        apt-get update && apt-get install -y curl procps python3-pip
         echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
 
+        echo "🚀 Downloading Cloud SQL Proxy..."
+        curl -o cloud_sql_proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64
+        chmod +x cloud_sql_proxy
+
         echo "🚀 Starting Cloud SQL Proxy..."
-        ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} -credential_file=/tmp/cloud_sql_key.json &
-        sleep 5  # give proxy time to start
+        ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} \
+          -credential_file=/tmp/cloud_sql_key.json &
+        sleep 5
 
         echo "🔧 Loading environment variables from .env..."
         if [ -f .env ]; then
@@ -39,17 +46,17 @@ steps:
 
         cd app
         pip install -r requirements.txt
-
         export DB_HOST=127.0.0.1
         export DB_PORT=${_DB_PORT}
 
         echo "🚀 Initializing DB..."
         INIT_DB_ONLY=true python app.py
 
-        echo "🛑 Stopping Cloud SQL Proxy..."
         pkill -f cloud_sql_proxy
 
+  # ------------------------------------------------------
   # 1) Terraform Init & Apply
+  # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
     entrypoint: sh
     id: "Terraform Init & Apply"
@@ -66,17 +73,23 @@ steps:
         echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
 
+  # ------------------------------------------------------
   # 2) Build Docker Image
+  # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Build Docker Image"
     args: ["build", "-t", "${_IMAGE}:${_TAG}", "."]
 
+  # ------------------------------------------------------
   # 3) Push Docker Image
+  # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Push Docker Image"
     args: ["push", "${_IMAGE}:${_TAG}"]
 
+  # ------------------------------------------------------
   # 4) Deploy to GKE
+  # ------------------------------------------------------
   - name: gcr.io/cloud-builders/gcloud
     id: "Deploy to GKE"
     entrypoint: bash
@@ -103,7 +116,9 @@ steps:
           exit 1
         )
 
+  # ------------------------------------------------------
   # 5) Post-deployment checks & integration tests
+  # ------------------------------------------------------
   - name: gcr.io/cloud-builders/gcloud
     id: "Post-Deployment Checks & Integration Tests"
     entrypoint: bash
