@@ -15,12 +15,49 @@ availableSecrets:
       env: "_CLOUD_SQL_KEY"
 
 steps:
+  # ------------------------------------------------------
+  # 0) Initialize Database via Cloud SQL Proxy (single step)
+  # ------------------------------------------------------
+  - name: gcr.io/cloudsql-docker/gce-proxy:1.33.2
+    id: "Init Database via Cloud SQL Proxy"
+    secretEnv: ["_CLOUD_SQL_KEY"]
+    entrypoint: bash
+    args:
+      - "-c"
+      - |
+        echo "🔐 Writing service account key..."
+        echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
+
+        echo "🚀 Starting Cloud SQL Proxy..."
+        ./cloud_sql_proxy -instances=my-project-app-477009:us-central1:product-db-instance=tcp:5432 -credential_file=/tmp/cloud_sql_key.json &
+        PROXY_PID=$!
+
+        echo "⏳ Waiting for Cloud SQL Proxy to be ready..."
+        sleep 5
+
+        echo "🔧 Loading environment variables from .env..."
+        if [ -f .env ]; then
+            set -o allexport
+            source .env
+            set +o allexport
+        fi
+
+        export DB_HOST=127.0.0.1
+        export DB_PORT=${_DB_PORT}
+
+        echo "🚀 Running Python app to initialize DB..."
+        cd app
+        pip install -r requirements.txt
+        INIT_DB_ONLY=true python app.py
+
+        echo "🛑 Stopping Cloud SQL Proxy..."
+        kill $PROXY_PID
 
   # ------------------------------------------------------
-  # 1) Install Terraform
+  # 1) Install Terraform and apply infra
   # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
-    entrypoint: "sh"
+    entrypoint: sh
     id: "Terraform Init & Apply"
     args:
       - "-c"
@@ -36,62 +73,27 @@ steps:
         terraform apply -input=false -auto-approve tfplan
 
   # ------------------------------------------------------
-  # 2) Initialize Database using Cloud SQL Proxy (sidecar)
-  # ------------------------------------------------------
-  - name: python:3.11
-    id: "Init Database"
-    secretEnv: ["_CLOUD_SQL_KEY"]
-    entrypoint: bash
-    args:
-      - "-c"
-      - |
-        echo "🔧 Loading environment variables from .env..."
-        if [ -f .env ]; then
-            set -o allexport
-            source .env
-            set +o allexport
-        else
-            echo "⚠ .env file not found!"
-            exit 1
-        fi
-
-        cd app
-        pip install -r requirements.txt
-
-        echo "🚀 Starting Cloud SQL Proxy..."
-        # Start Cloud SQL Proxy in background
-        docker run --rm -d \
-          -v /tmp:/tmp \
-          -e GOOGLE_APPLICATION_CREDENTIALS=/tmp/cloud_sql_key.json \
-          gcr.io/cloudsql-docker/gce-proxy:1.33.2 /cloud_sql_proxy \
-          -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} \
-          -credential_file=/tmp/cloud_sql_key.json
-
-        export DB_HOST=127.0.0.1
-        export DB_PORT=${_DB_PORT}
-
-        INIT_DB_ONLY=true python app.py
-
-  # ------------------------------------------------------
-  # 3) Build Docker Image
+  # 2) Build Docker Image
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Build Docker Image"
-    args: ["build", "-t", "${_IMAGE}:${_TAG}", "."]
+    args:
+      ["build", "-t", "${_IMAGE}:${_TAG}", "."]
 
   # ------------------------------------------------------
-  # 4) Push Docker Image
+  # 3) Push Docker Image
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Push Docker Image"
-    args: ["push", "${_IMAGE}:${_TAG}"]
+    args:
+      ["push", "${_IMAGE}:${_TAG}"]
 
   # ------------------------------------------------------
-  # 5) Deploy to GKE
+  # 4) Deploy to GKE
   # ------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
+  - name: gcr.io/cloud-builders/gcloud
     id: "Deploy to GKE"
-    entrypoint: "bash"
+    entrypoint: bash
     args:
       - "-c"
       - |
@@ -116,20 +118,21 @@ steps:
         )
 
   # ------------------------------------------------------
-  # 6) Post-deployment checks & integration tests
+  # 5) Post-deployment checks & integration tests
   # ------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/gcloud'
-    id: 'Post-Deployment Checks & Integration Tests'
-    entrypoint: 'bash'
+  - name: gcr.io/cloud-builders/gcloud
+    id: "Post-Deployment Checks & Integration Tests"
+    entrypoint: bash
     env:
       - API_KEY=chinnu31
     args:
-      - '-c'
+      - "-c"
       - |
         set -euo pipefail
-        echo " Running post-deployment checks..."
 
-        LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
+        echo " Running post-deployment checks..."
+        LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+
         MAX_RETRIES=12
         RETRY=0
 
@@ -141,7 +144,7 @@ steps:
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo " LoadBalancer IP not found. Diagnosing..."
+          echo "LoadBalancer IP not found. Dumping diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
@@ -150,7 +153,7 @@ steps:
           exit 1
         fi
 
-        echo " LoadBalancer IP resolved: $$LB_IP"
+        echo "LoadBalancer IP resolved: $$LB_IP"
 
         echo "⏳ Checking /products endpoint..."
         for i in $$(seq 1 8); do
@@ -164,19 +167,17 @@ steps:
         done
 
         if [ "$$http_status" != "200" ]; then
-          echo " /products endpoint failing."
+          echo "/products endpoint failing."
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
-          kubectl describe svc gke-rest-api-service || true
-          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
 
-        echo " Running integration tests..."
+        echo "Running integration tests..."
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
 
-        echo " Integration tests passed."
+        echo "Integration tests passed."
 
 images:
   - "${_IMAGE}:${_TAG}"
