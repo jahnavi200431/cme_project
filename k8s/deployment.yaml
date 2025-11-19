@@ -1,7 +1,23 @@
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: api-backendconfig
+spec:
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 3
+    port: 8080
+    requestPath: /health
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gke-rest-api
+  labels:
+    app: gke-rest-api
 spec:
   replicas: 2
   selector:
@@ -13,12 +29,15 @@ spec:
         app: gke-rest-api
     spec:
       containers:
+
+        # =====================================
+        #   MAIN API CONTAINER
+        # =====================================
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
             - containerPort: 8080
 
-          # Probes
           readinessProbe:
             httpGet:
               path: /ready
@@ -67,15 +86,64 @@ spec:
                   name: db-credentials
                   key: API_KEY
 
-        # ------------------------------------------------------
-        # CLOUD SQL AUTH PROXY SIDECAR
-        # ------------------------------------------------------
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+        # =====================================
+        #  CLOUD SQL PROXY SIDECAR
+        # =====================================
         - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.1
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
           args:
-            - "--port=5432"
             - "--address=0.0.0.0"
+            - "--port=5432"
+            - "--private-ip"
             - "my-project-app-477009:us-central1:product-db-instance"
           securityContext:
             runAsNonRoot: true
-      restartPolicy: Always
+          volumeMounts:
+            - name: cloudsql
+              mountPath: /cloudsql
+
+      volumes:
+        - name: cloudsql
+          emptyDir: {}
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-rest-api-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: gke-rest-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gke-rest-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gke-rest-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
