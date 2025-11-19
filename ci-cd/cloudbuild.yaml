@@ -16,23 +16,21 @@ availableSecrets:
 
 steps:
   # ------------------------------------------------------
-  # 0) Start Cloud SQL Proxy
+  # 0) Start Cloud SQL Proxy (pre-built container)
   # ------------------------------------------------------
-  - name: gcr.io/cloudsql-docker/gce-proxy:1.33.2
-    id: "Cloud SQL Proxy"
-    secretEnv: ["_CLOUD_SQL_KEY"]
-    entrypoint: "/bin/sh"
+  - name: 'gcr.io/cloudsql-docker/gce-proxy:1.33.2'
+    id: 'Cloud SQL Proxy'
+    secretEnv: ['_CLOUD_SQL_KEY']
+    entrypoint: '/cloud_sql_proxy'
     args:
-      - "-c"
-      - |
-        echo "🔐 Writing service account key..."
-        echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
-
-        echo "🚀 Starting Cloud SQL Proxy..."
-        /cloud_sql_proxy -instances=$my-project-app-477009:us-central1:product-db-instance=tcp:5432 -credential_file=/tmp/cloud_sql_key.json &
+      - '-instances=$my-project-app-477009:us-central1:product-db-instance=tcp:5432'
+      - '-credential_file=/secrets/cloudsql/_CLOUD_SQL_KEY'
+    volumes:
+      - name: 'cloudsql-secret'
+        path: '/secrets/cloudsql'
 
   # ------------------------------------------------------
-  # 1) Install Terraform and apply infra
+  # 1) Terraform Init & Apply
   # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
     id: "Terraform Init & Apply"
@@ -41,32 +39,26 @@ steps:
       - "-c"
       - |
         cd infra1
-        echo "🔧 Initializing Terraform..."
         terraform init -input=false
-
-        echo "📄 Planning Terraform..."
         terraform plan -out=tfplan -input=false
-
-        echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
 
   # ------------------------------------------------------
-  # 2) Initialize Database via Proxy
+  # 2) Initialize Database via Cloud SQL Proxy
   # ------------------------------------------------------
   - name: python:3.11
     id: "Init Database"
-    secretEnv: ["_CLOUD_SQL_KEY"]
-    entrypoint: "bash"
+    entrypoint: bash
+    secretEnv: ['_CLOUD_SQL_KEY']
     args:
       - "-c"
       - |
-        echo "🔧 Loading environment variables from .env..."
         if [ -f .env ]; then
-            set -o allexport
-            source .env
-            set +o allexport
+          set -o allexport
+          source .env
+          set +o allexport
         else
-          echo "⚠ .env file not found!"
+          echo ".env file not found!"
           exit 1
         fi
 
@@ -76,7 +68,6 @@ steps:
         export DB_HOST=127.0.0.1
         export DB_PORT=${_DB_PORT}
 
-        echo "🛠 Initializing DB..."
         INIT_DB_ONLY=true python app.py
 
   # ------------------------------------------------------
@@ -96,95 +87,66 @@ steps:
   # ------------------------------------------------------
   # 5) Deploy to GKE
   # ------------------------------------------------------
-  - name: "gcr.io/cloud-builders/gcloud"
+  - name: gcr.io/cloud-builders/gcloud
     id: "Deploy to GKE"
-    entrypoint: "bash"
+    entrypoint: bash
     args:
       - "-c"
       - |
-        echo "🚀 Starting deployment to GKE..."
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
 
-        echo "📦 Applying Kubernetes manifests..."
         kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
 
-        echo "🔄 Updating Deployment image: ${_IMAGE}:${_TAG}"
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
-
-        echo "⏳ Waiting for rollout..."
-        kubectl rollout status deployment/gke-rest-api --timeout=120s || (
-          echo "❌ Rollout failed"
-          kubectl describe deployment gke-rest-api
-          kubectl get pods -o wide
-          exit 1
-        )
+        kubectl rollout status deployment/gke-rest-api --timeout=120s
 
   # ------------------------------------------------------
   # 6) Post-deployment checks & integration tests
   # ------------------------------------------------------
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: gcr.io/cloud-builders/gcloud
     id: 'Post-Deployment Checks & Integration Tests'
-    entrypoint: 'bash'
+    entrypoint: bash
     env:
       - API_KEY=chinnu31
     args:
-      - '-c'
+      - "-c"
       - |
         set -euo pipefail
 
-        echo " Running post-deployment checks..."
-
-        LB_IP=$$(kubectl get ingress product-api-ingress -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' --ignore-not-found || true)
-        MAX_RETRIES=12
-        RETRY=0
-
-        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
+        LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || true)
+        retries=12
+        count=0
+        while [ -z "$$LB_IP" ] && [ $$count -lt $$retries ]; do
           sleep 10
-          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
-          RETRY=$$((RETRY+1))
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || true)
+          count=$$((count+1))
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo " LoadBalancer IP not found. Diagnosing..."
-          kubectl get svc gke-rest-api-service -o yaml || true
-          kubectl describe svc gke-rest-api-service || true
-          kubectl get pods -l app=gke-rest-api -o wide || true
-          kubectl describe deployment gke-rest-api || true
-          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+          echo "LoadBalancer IP not found."
           exit 1
         fi
 
-        echo " LoadBalancer IP resolved: $$LB_IP"
+        echo "LoadBalancer IP: $$LB_IP"
 
-        echo "⏳ Checking /products endpoint..."
+        # Check /products endpoint
         for i in $$(seq 1 8); do
           http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
-          echo "Attempt $$i: HTTP $$http_status"
-          if [ "$$http_status" = "200" ]; then
-            echo " /products returned 200 OK"
-            break
-          fi
+          if [ "$$http_status" = "200" ]; then break; fi
           sleep 5
         done
 
         if [ "$$http_status" != "200" ]; then
-          echo " /products endpoint failing."
-          kubectl get pods -l app=gke-rest-api -o wide || true
-          kubectl describe deployment gke-rest-api || true
-          kubectl describe svc gke-rest-api-service || true
-          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
+          echo "/products endpoint failing."
           exit 1
         fi
 
-        echo " Running integration tests..."
+        # Run integration tests
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
-
-        echo " Integration tests passed."
 
 images:
   - "${_IMAGE}:${_TAG}"
