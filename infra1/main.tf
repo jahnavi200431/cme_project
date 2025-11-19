@@ -5,27 +5,31 @@ provider "google" {
 }
 
 # -------------------------------------------------------------
-# Locals
-# -------------------------------------------------------------
+#  USE YOUR CUSTOM SERVICE ACCOUNT FOR GKE NODES
+# ------------------------------------------------------------
 locals {
-  node_sa = "product-api-gsa@${var.project_id}.iam.gserviceaccount.com"
+  node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
 }
 
 # -------------------------------------------------------------
-# IAM: give minimal node permissions needed (logging/monitoring/cloudsql)
+#  IAM PERMISSIONS FOR THE SERVICE ACCOUNT
 # -------------------------------------------------------------
+
+# Allow GKE nodes to write logs
 resource "google_project_iam_member" "logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
+# Allow GKE nodes to write monitoring metrics
 resource "google_project_iam_member" "metricwriter" {
   project = var.project_id
   role    = "roles/monitoring.metricWriter"
   member  = "serviceAccount:${local.node_sa}"
 }
 
+# Allow GKE nodes to access Cloud SQL
 resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
@@ -33,48 +37,30 @@ resource "google_project_iam_member" "cloudsql_client" {
 }
 
 # -------------------------------------------------------------
-# GKE CLUSTER (managed here) - BE CAREFUL IF CLUSTER ALREADY EXISTS
+#  GKE CLUSTER
 # -------------------------------------------------------------
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
   location                 = var.zone
-  network                  = "default"
+  deletion_protection      = false
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  # If your cluster is already configured differently, consider importing
-  # the existing cluster into Terraform state instead of applying to avoid
-  # replacement. See notes below.
-
-  # Do NOT set private_cluster_config here unless you intend to create a private control plane.
-  # (You previously used private endpoints; keep this minimal to avoid accidental replacement.)
-}
-
-# Prevent accidental destroy/recreate of cluster attributes managed outside TF
-# (optional — adjust if you plan to fully manage cluster in Terraform)
-resource "null_resource" "gke_marker" {
-  triggers = {
-    cluster_id = google_container_cluster.gke.id
-  }
-  lifecycle {
-    prevent_destroy = true
-  }
+  network = "default"
 }
 
 # -------------------------------------------------------------
-# NODE POOL USING YOUR SERVICE ACCOUNT
+#  NODE POOL USING YOUR SERVICE ACCOUNT
 # -------------------------------------------------------------
-resource "google_container_node_pool" "private_node_pool1" {
-  name     = "private-node-pool1"
+resource "google_container_node_pool" "node_pool" {
+  name     = "api-node-pool"
   cluster  = google_container_cluster.gke.name
   location = var.zone
 
-  initial_node_count = 2
-
   node_config {
     machine_type    = "e2-medium"
-    disk_size_gb    = 50
-    disk_type       = "pd-standard"
+
+    # ✔ Your custom service account
     service_account = local.node_sa
 
     oauth_scopes = [
@@ -82,48 +68,13 @@ resource "google_container_node_pool" "private_node_pool1" {
       "https://www.googleapis.com/auth/monitoring",
       "https://www.googleapis.com/auth/cloud-platform"
     ]
-
-    metadata = {
-      disable-legacy-endpoints = "true"
-    }
-
-    labels = {
-      type = "private"
-    }
   }
 
-  management {
-    auto_upgrade = true
-    auto_repair  = false
-  }
-
-  lifecycle {
-    # if this pool already exists and you imported it, keep this optionally
-    ignore_changes = [
-      # ignore fields that can change outside terraform
-    ]
-  }
+  initial_node_count = 2
 }
 
 # -------------------------------------------------------------
-# CLOUD NAT (so private nodes can access public internet e.g. to pull images)
-# -------------------------------------------------------------
-resource "google_compute_router" "nat_router" {
-  name    = "nat-router"
-  network = "default"
-  region  = var.region
-}
-
-resource "google_compute_router_nat" "nat_config" {
-  name                              = "nat-config"
-  router                            = google_compute_router.nat_router.name
-  region                            = google_compute_router.nat_router.region
-  nat_ip_allocate_option            = "AUTO_ONLY"
-  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
-}
-
-# -------------------------------------------------------------
-# CLOUD SQL INSTANCE (public IP allowed for your IP)
+#  CLOUD SQL INSTANCE
 # -------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
@@ -136,38 +87,24 @@ resource "google_sql_database_instance" "postgres" {
     ip_configuration {
       ipv4_enabled = true
 
+      # ⚠️ Not modifying as per your request
       authorized_networks {
-        name  = "cloudshell-or-my-ip"
-        value = "45.118.72.149/32"   # <--- your allowed CIDR
+        name  = "any"
+        value = "0.0.0.0/0"
       }
     }
   }
-
-  # Avoid accidental replacement: do not set deletion_protection = false unless you want deletions possible
 }
 
+# Create DB
 resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
 }
 
+# Create DB user
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
   instance = google_sql_database_instance.postgres.name
-}
-
-# -------------------------------------------------------------
-# Outputs (helpful)
-# -------------------------------------------------------------
-output "gke_cluster_name" {
-  value = google_container_cluster.gke.name
-}
-
-output "node_pool_name" {
-  value = google_container_node_pool.private_node_pool1.name
-}
-
-output "nat_router" {
-  value = google_compute_router.nat_router.name
 }
