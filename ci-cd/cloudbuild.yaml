@@ -6,13 +6,13 @@ serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-com
 substitutions:
   _TAG: $SHORT_SHA
   _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
-  _DB_INSTANCE_CONNECTION: "my-project-app-477009:us-central1:my-db-instance"
+  _DB_INSTANCE_CONNECTION: "my-project-app-477009:us-central1:product-db-instance"
   _DB_PORT: "5432"
 
 availableSecrets:
   secretManager:
     - versionName: "projects/433503387155/secrets/cloud_sql_key/versions/latest"
-      
+      env: "_CLOUD_SQL_KEY"
 
 steps:
   # ------------------------------------------------------
@@ -21,8 +21,7 @@ steps:
   - name: gcr.io/cloud-builders/gcloud
     id: "Cloud SQL Proxy Setup"
     entrypoint: "bash"
-    env:
-      - "_CLOUD_SQL_KEY=$_CLOUD_SQL_KEY"
+    secretEnv: ["_CLOUD_SQL_KEY"]
     args:
       - "-c"
       - |
@@ -62,6 +61,7 @@ steps:
   - name: python:3.11
     id: "Init Database"
     entrypoint: bash
+    secretEnv: ["_CLOUD_SQL_KEY"]
     args:
       - "-c"
       - |
