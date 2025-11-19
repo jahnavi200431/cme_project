@@ -18,40 +18,43 @@ steps:
   # ------------------------------------------------------
   # 0) Initialize DB via Cloud SQL Proxy
   # ------------------------------------------------------
-  - name: ubuntu
+  - name: python:3.11-slim
     id: "Init DB via Cloud SQL Proxy"
     secretEnv: ["_CLOUD_SQL_KEY"]
     entrypoint: bash
     args:
       - "-c"
       - |
-        apt-get update && apt-get install -y curl procps python3-pip
+        apt-get update && apt-get install -y curl procps
+
+        # Write service account key
         echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
 
-        echo "🚀 Downloading Cloud SQL Proxy..."
+        # Download Cloud SQL Proxy v2
         curl -o cloud_sql_proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64
         chmod +x cloud_sql_proxy
 
-        echo "🚀 Starting Cloud SQL Proxy..."
+        # Start Cloud SQL Proxy
         ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} \
           -credential_file=/tmp/cloud_sql_key.json &
         sleep 5
 
-        echo "🔧 Loading environment variables from .env..."
+        # Load environment variables
         if [ -f .env ]; then
           set -o allexport
           source .env
           set +o allexport
         fi
 
-        cd app
-        pip install -r requirements.txt
         export DB_HOST=127.0.0.1
         export DB_PORT=${_DB_PORT}
 
-        echo "🚀 Initializing DB..."
+        # Initialize DB
+        cd app
+        pip install --no-cache-dir -r requirements.txt
         INIT_DB_ONLY=true python app.py
 
+        # Stop Cloud SQL Proxy
         pkill -f cloud_sql_proxy
 
   # ------------------------------------------------------
