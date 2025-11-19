@@ -1,115 +1,134 @@
-provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
-}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: api-backendconfig
+spec:
+  healthCheck:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    healthyThreshold: 2
+    unhealthyThreshold: 3
+    port: 8080
+    requestPath: /health
 
-data "google_client_config" "current" {}
+---
 
-locals {
-  node_sa = "product-api-gsa@${var.project_id}.iam.gserviceaccount.com"
-}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gke-rest-api
+  labels:
+    app: gke-rest-api
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: gke-rest-api
+  template:
+    metadata:
+      labels:
+        app: gke-rest-api
+    spec:
+      containers:
+        - name: gke-rest-api
+          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+          ports:
+            - containerPort: 8080
 
-# ----------------------------
-# IAM for Cloud SQL access
-# ----------------------------
-resource "google_project_iam_member" "cloudsql_client" {
-  project = var.project_id
-  role    = "roles/cloudsql.client"
-  member  = "serviceAccount:${local.node_sa}"
-}
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 30   # Give time to connect to DB
+            periodSeconds: 10
+            failureThreshold: 10
 
-# ----------------------------
-# GKE Cluster
-# ----------------------------
-resource "google_container_cluster" "gke" {
-  name                     = "product-gke-cluster"
-  location                 = var.zone
-  remove_default_node_pool = true
-  initial_node_count       = 1
-}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
 
-# ----------------------------
-# Node pool
-# ----------------------------
-resource "google_container_node_pool" "node_pool" {
-  name     = "api-node-pool"
-  cluster  = google_container_cluster.gke.name
-  location = var.zone
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
 
-  node_config {
-    machine_type    = "e2-small"
-    service_account = local.node_sa
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/logging.write",
-      "https://www.googleapis.com/auth/monitoring",
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
+          env:
+            - name: DB_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_HOST
+            - name: DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_NAME
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_USER
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASS
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PORT
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: API_KEY
 
-  initial_node_count = 2
-}
+---
 
-# ----------------------------
-# Cloud SQL instance with Private IP
-# ----------------------------
-resource "google_sql_database_instance" "postgres" {
-  name             = "product-db-instance"
-  database_version = "POSTGRES_15"
-  region           = var.region
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-rest-api-service
+spec:
+  type: LoadBalancer
+  selector:
+    app: gke-rest-api
+  ports:
+    - name: http
+      port: 80
+      protocol: TCP
+      targetPort: 8080
 
-  settings {
-    tier = "db-f1-micro"
-    ip_configuration {
-      ipv4_enabled   = false
-      private_network = "projects/${var.project_id}/global/networks/default"
-    }
-  }
-}
+---
 
-resource "google_sql_database" "db" {
-  name     = "productdb"
-  instance = google_sql_database_instance.postgres.name
-}
-
-resource "google_sql_user" "root" {
-  name     = var.db_user
-  password = var.db_password
-  instance = google_sql_database_instance.postgres.name
-}
-
-# ----------------------------
-# Service account key for Cloud SQL Proxy
-# ----------------------------
-resource "google_service_account_key" "cloudsql_proxy_key" {
-  service_account_id = local.node_sa
-}
-
-# ----------------------------
-# Kubernetes provider (after cluster is ready)
-# ----------------------------
-provider "kubernetes" {
-  host                   = "https://${google_container_cluster.gke.endpoint}"
-  cluster_ca_certificate = base64decode(google_container_cluster.gke.master_auth[0].cluster_ca_certificate)
-  token                  = data.google_client_config.current.access_token
-}
-
-# ----------------------------
-# Kubernetes Secret for Cloud SQL Proxy
-# ----------------------------
-resource "kubernetes_secret" "cloudsql_instance_credentials" {
-  metadata {
-    name      = "cloudsql-instance-credentials"
-    namespace = "default"
-  }
-
-  data = {
-    "key.json" = google_service_account_key.cloudsql_proxy_key.private_key
-  }
-
-  type = "Opaque"
-
-  lifecycle {
-    ignore_changes = [data]   # prevents errors if secret already exists
-  }
-}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gke-rest-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gke-rest-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
