@@ -31,7 +31,7 @@ steps:
           -credential_file=/tmp/cloud_sql_key.json &
 
         PROXY_PID=$!
-        sleep 5  # Give proxy time to start
+        sleep 5  # give proxy time to start
 
         echo "🔧 Loading environment variables from .env..."
         if [ -f .env ]; then
