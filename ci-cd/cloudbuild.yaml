@@ -12,7 +12,7 @@ substitutions:
 availableSecrets:
   secretManager:
     - versionName: "projects/433503387155/secrets/cloud_sql_key/versions/latest"
-      env: "_CLOUD_SQL_KEY"
+      
 
 steps:
   # ------------------------------------------------------
