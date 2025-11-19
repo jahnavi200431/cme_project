@@ -16,7 +16,7 @@ availableSecrets:
 
 steps:
   # ------------------------------------------------------
-  # 0) Initialize Database via Cloud SQL Proxy (single step)
+  # 0) Initialize Database via Cloud SQL Proxy
   # ------------------------------------------------------
   - name: gcr.io/cloudsql-docker/gce-proxy:1.33.2
     id: "Init Database via Cloud SQL Proxy"
@@ -30,7 +30,7 @@ steps:
 
         echo "🚀 Starting Cloud SQL Proxy..."
         ./cloud_sql_proxy -instances=my-project-app-477009:us-central1:product-db-instance=tcp:5432 -credential_file=/tmp/cloud_sql_key.json &
-        PROXY_PID=$!
+        PID=$!
 
         echo "⏳ Waiting for Cloud SQL Proxy to be ready..."
         sleep 5
@@ -51,14 +51,14 @@ steps:
         INIT_DB_ONLY=true python app.py
 
         echo "🛑 Stopping Cloud SQL Proxy..."
-        kill $PROXY_PID
+        kill $PID
 
   # ------------------------------------------------------
   # 1) Install Terraform and apply infra
   # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
-    entrypoint: sh
     id: "Terraform Init & Apply"
+    entrypoint: sh
     args:
       - "-c"
       - |
@@ -130,7 +130,7 @@ steps:
       - |
         set -euo pipefail
 
-        echo " Running post-deployment checks..."
+        echo "Running post-deployment checks..."
         LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
 
         MAX_RETRIES=12
@@ -160,7 +160,7 @@ steps:
           http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
           echo "Attempt $$i: HTTP $$http_status"
           if [ "$$http_status" = "200" ]; then
-            echo " /products returned 200 OK"
+            echo "/products returned 200 OK"
             break
           fi
           sleep 5
@@ -176,7 +176,6 @@ steps:
         echo "Running integration tests..."
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
-
         echo "Integration tests passed."
 
 images:
