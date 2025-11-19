@@ -1,9 +1,21 @@
-apiVersion: v1
-kind: ServiceAccount
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
 metadata:
-  name: product-api-ksa
-  namespace: default
+  name: api-backendconfig
+spec:
+  healthCheck:
+    checkIntervalSec: 5
+    timeoutSec: 5
+    healthyThreshold: 1
+    unhealthyThreshold: 2
+    port: 8080
+    requestPath: /health
+
 ---
+
+# -------------------------------
+# 3) Deployment
+# -------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,6 +24,11 @@ metadata:
     app: gke-rest-api
 spec:
   replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app: gke-rest-api
@@ -20,20 +37,42 @@ spec:
       labels:
         app: gke-rest-api
     spec:
-      serviceAccountName: product-api-ksa
       containers:
-        # ------------------------------
-        # MAIN API CONTAINER
-        # ------------------------------
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
             - containerPort: 8080
+
+          # Readiness & Liveness probes
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+
+          # CPU/Memory requests & limits (required for HPA)
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # Environment variables from Secret
           env:
             - name: DB_HOST
-              value: "127.0.0.1"
-            - name: DB_PORT
-              value: "5432"
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_HOST
             - name: DB_NAME
               valueFrom:
                 secretKeyRef:
@@ -49,46 +88,22 @@ spec:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PASS
+            - name: DB_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PORT
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: API_KEY
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 20
 
-        # ------------------------------
-        # CLOUD SQL PROXY SIDE CAR
-        # ------------------------------
-        - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.11.0
-          command:
-            - "/cloud-sql-proxy"
-            - "my-project-app-477009:us-central1:product-db-instance"
-            - "--port=5432"
-            - "--private-ip"
-            - "--auto-iam-authn"
-          resources:
-            requests:
-              cpu: "50m"
-              memory: "64Mi"
-            limits:
-              cpu: "200m"
-              memory: "256Mi"
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 65534
 ---
+
+# -------------------------------
+# 4) Service (LoadBalancer)
+# -------------------------------
 apiVersion: v1
 kind: Service
 metadata:
@@ -98,9 +113,16 @@ spec:
   selector:
     app: gke-rest-api
   ports:
-    - port: 80
+    - name: http
+      port: 80
+      protocol: TCP
       targetPort: 8080
+
 ---
+
+# -------------------------------
+# 5) Horizontal Pod Autoscaler
+# -------------------------------
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
