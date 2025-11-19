@@ -5,6 +5,7 @@ import logging
 import sys
 import json
 import io
+from google.cloud import secretmanager
 
 app = Flask(__name__)
 
@@ -95,14 +96,34 @@ class RequestResponseLoggerMiddleware:
 
         return response_body_chunks
 
-# Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
+
+# ---------------------------------------------------------
+# GOOGLE SECRET MANAGER INTEGRATION
+# ---------------------------------------------------------
+def get_secret(secret_name):
+    """Fetch secret from Google Secret Manager"""
+    client = secretmanager.SecretManagerServiceClient()
+    project_id = os.getenv("GCP_PROJECT", "my-project-app-477009")  # adjust if needed
+    name = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    response = client.access_secret_version(name=name)
+    return response.payload.data.decode("UTF-8")
+
+# Fetch secrets
+try:
+    API_KEY = get_secret("db-key")
+    DB_HOST = get_secret("db-host")
+    DB_NAME = get_secret("db-name")
+    DB_USER = get_secret("db-user")
+    DB_PASS = get_secret("db-password")
+    DB_PORT = get_secret("db-port")
+except Exception as e:
+    logger.error({"event": "fetch_gsm_secrets_failed", "error": str(e)})
+    sys.exit(1)
 
 # ---------------------------------------------------------
 # API KEY CHECK
 # ---------------------------------------------------------
-API_KEY = os.getenv("API_KEY")
-
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
@@ -110,7 +131,7 @@ def require_api_key():
         or request.headers.get("Authorization")
     )
     if API_KEY is None:
-        logger.error({"event": "api_key_env_missing"})
+        logger.error({"event": "api_key_missing"})
         return False
     if provided_key != API_KEY:
         logger.warning({
@@ -121,29 +142,8 @@ def require_api_key():
     return True
 
 # ---------------------------------------------------------
-# HEALTH CHECKS
+# DATABASE CONNECTION
 # ---------------------------------------------------------
-@app.route('/health', methods=['GET'])
-def health():
-    return {"status": "healthy"}, 200
-
-@app.route('/ready', methods=['GET'])
-def readiness():
-    conn = get_db_connection(check_only=True)
-    if conn:
-        conn.close()
-        return {"status": "ready"}, 200
-    return {"status": "not ready"}, 500
-
-# ---------------------------------------------------------
-# DATABASE CONFIG
-# ---------------------------------------------------------
-DB_HOST = os.getenv("DB_HOST")
-DB_NAME = os.getenv("DB_NAME")
-DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASS")
-DB_PORT = os.getenv("DB_PORT")
-
 def get_db_connection(check_only=False):
     try:
         conn = psycopg2.connect(
@@ -185,6 +185,21 @@ def create_table_if_not_exists():
     finally:
         cur.close()
         conn.close()
+
+# ---------------------------------------------------------
+# HEALTH CHECKS
+# ---------------------------------------------------------
+@app.route('/health', methods=['GET'])
+def health():
+    return {"status": "healthy"}, 200
+
+@app.route('/ready', methods=['GET'])
+def readiness():
+    conn = get_db_connection(check_only=True)
+    if conn:
+        conn.close()
+        return {"status": "ready"}, 200
+    return {"status": "not ready"}, 500
 
 # ---------------------------------------------------------
 # ROUTES
@@ -257,17 +272,14 @@ def update_product(product_id):
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
     data = request.get_json()
-     
     conn = get_db_connection()
     if not conn:
         return {"error": "Database connection failed"}, 500
-
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
         if not cur.fetchone():
             return {"error": "Product not found"}, 404
-
         cur.execute("""
             UPDATE product
             SET name=%s, description=%s, price=%s, quantity=%s
@@ -275,7 +287,6 @@ def update_product(product_id):
         """, (data.get("name"), data.get("description"),
               data.get("price"), data.get("quantity"), product_id))
         conn.commit()
-
         return {"message": f"Product {product_id} updated!"}
     except Exception as e:
         return {"error": str(e)}, 500
