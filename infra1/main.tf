@@ -90,7 +90,7 @@ resource "google_sql_database_instance" "postgres" {
       # ⚠️ Not modifying as per your request
       authorized_networks {
         name  = "any"
-        value = "0.0.0.0/0"
+        value = " 45.118.72.210"
       }
     }
   }
