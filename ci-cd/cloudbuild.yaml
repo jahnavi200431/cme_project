@@ -16,7 +16,7 @@ availableSecrets:
 
 steps:
   # ------------------------------------------------------
-  # 0) Initialize Database via Cloud SQL Proxy (single step)
+  # 0) Initialize DB via Cloud SQL Proxy
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/bash
     id: "Init DB via Cloud SQL Proxy"
@@ -28,12 +28,15 @@ steps:
         echo "🔐 Writing service account key..."
         echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
 
+        
+
         echo "🚀 Starting Cloud SQL Proxy..."
         ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} \
           -credential_file=/tmp/cloud_sql_key.json &
 
+        # local variable only
         PROXY_PID=$!
-        sleep 5  # give proxy a moment to start
+        sleep 5  # give proxy time to start
 
         echo "🔧 Loading environment variables from .env..."
         if [ -f .env ]; then
@@ -55,11 +58,11 @@ steps:
         kill $PROXY_PID
 
   # ------------------------------------------------------
-  # 1) Install Terraform & Apply
+  # 1) Terraform Init & Apply
   # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
-    id: "Terraform Init & Apply"
     entrypoint: sh
+    id: "Terraform Init & Apply"
     args:
       - "-c"
       - |
@@ -78,16 +81,14 @@ steps:
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Build Docker Image"
-    args:
-      ["build", "-t", "${_IMAGE}:${_TAG}", "."]
+    args: ["build", "-t", "${_IMAGE}:${_TAG}", "."]
 
   # ------------------------------------------------------
   # 3) Push Docker Image
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Push Docker Image"
-    args:
-      ["push", "${_IMAGE}:${_TAG}"]
+    args: ["push", "${_IMAGE}:${_TAG}"]
 
   # ------------------------------------------------------
   # 4) Deploy to GKE
@@ -98,7 +99,7 @@ steps:
     args:
       - "-c"
       - |
-        echo "🚀 Deploying to GKE..."
+        echo "🚀 Starting deployment to GKE..."
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
@@ -107,7 +108,7 @@ steps:
         kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
 
-        echo "🔄 Updating Deployment image..."
+        echo "🔄 Updating Deployment image: ${_IMAGE}:${_TAG}"
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
 
         echo "⏳ Waiting for rollout..."
@@ -119,7 +120,7 @@ steps:
         )
 
   # ------------------------------------------------------
-  # 5) Post-deployment Checks & Integration Tests
+  # 5) Post-deployment checks & integration tests
   # ------------------------------------------------------
   - name: gcr.io/cloud-builders/gcloud
     id: "Post-Deployment Checks & Integration Tests"
@@ -138,43 +139,47 @@ steps:
         RETRY=0
 
         while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
-          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$MAX_RETRIES)"
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
           LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
           RETRY=$$((RETRY+1))
         done
 
         if [ -z "$$LB_IP" ]; then
-          echo "LoadBalancer IP not found. Diagnostics:"
+          echo "LoadBalancer IP not found. Dumping diagnostics..."
           kubectl get svc gke-rest-api-service -o yaml || true
           kubectl describe svc gke-rest-api-service || true
           kubectl get pods -l app=gke-rest-api -o wide || true
           kubectl describe deployment gke-rest-api || true
+          kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
 
-        echo "LoadBalancer IP: $$LB_IP"
+        echo "LoadBalancer IP resolved: $$LB_IP"
 
         echo "⏳ Checking /products endpoint..."
         for i in $$(seq 1 8); do
-          HTTP_STATUS=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
-          echo "Attempt $$i: HTTP $$HTTP_STATUS"
-          if [ "$$HTTP_STATUS" = "200" ]; then
-            echo "✅ /products returned 200 OK"
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
+            echo " /products returned 200 OK"
             break
           fi
           sleep 5
         done
 
-        if [ "$$HTTP_STATUS" != "200" ]; then
-          echo "❌ /products endpoint failing."
+        if [ "$$http_status" != "200" ]; then
+          echo "/products endpoint failing."
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
           exit 1
         fi
 
         echo "Running integration tests..."
-        chmod +x tests/integration_test.sh
+        chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
-        echo "✅ Integration tests passed."
+
+        echo "Integration tests passed."
 
 images:
   - "${_IMAGE}:${_TAG}"
