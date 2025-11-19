@@ -57,7 +57,7 @@ steps:
         terraform apply -input=false -auto-approve tfplan
 
   # ---------------------------------------------------------
-  # 1.1) Initialize Database (create table) via Proxy
+  # 1.1) Initialize Database via Proxy
   # ---------------------------------------------------------
   - name: python:3.11
     id: "Init Database"
@@ -84,28 +84,18 @@ steps:
         INIT_DB_ONLY=true python app.py
 
   # ----------------------------------------------------------
-  # 2) Build Docker Image with UNIQUE TAG
+  # 2) Build Docker Image
   # ----------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Build Docker Image"
-    args:
-      [
-        "build",
-        "-t",
-        "${_IMAGE}:${_TAG}",
-        "."
-      ]
+    args: ["build", "-t", "${_IMAGE}:${_TAG}", "."]
 
   # ----------------------------------------------------------
   # 3) Push Docker Image
   # ----------------------------------------------------------
   - name: gcr.io/cloud-builders/docker
     id: "Push Docker Image"
-    args:
-      [
-        "push",
-        "${_IMAGE}:${_TAG}"
-      ]
+    args: ["push", "${_IMAGE}:${_TAG}"]
 
   # ----------------------------------------------------------
   # 4) Deploy to GKE
@@ -117,7 +107,6 @@ steps:
       - "-c"
       - |
         echo "🚀 Starting deployment to GKE..."
-
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
@@ -126,7 +115,7 @@ steps:
         kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
 
-        echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
+        echo "🔄 Updating Deployment image: ${_IMAGE}:${_TAG}"
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
 
         echo "⏳ Waiting for rollout..."
