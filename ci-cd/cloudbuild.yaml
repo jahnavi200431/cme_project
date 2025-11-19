@@ -28,8 +28,6 @@ steps:
         echo "🔐 Writing service account key..."
         echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
 
-        
-
         echo "🚀 Starting Cloud SQL Proxy..."
         ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} \
           -credential_file=/tmp/cloud_sql_key.json &
