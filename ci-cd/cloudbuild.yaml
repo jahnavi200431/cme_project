@@ -6,12 +6,38 @@ serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-com
 substitutions:
   _TAG: $SHORT_SHA
   _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
+  _DB_INSTANCE_CONNECTION: "my-project-app-477009:us-central1:my-db-instance"
+  _DB_PORT: "5432"
+
+availableSecrets:
+  secretManager:
+    - versionName: "projects/433503387155/secrets/cloud_sql_key/versions/latest"
+      env: "_CLOUD_SQL_KEY"
 
 steps:
-  
+  # ------------------------------------------------------
+  # 0) Install & Start Cloud SQL Proxy
+  # ------------------------------------------------------
+  - name: gcr.io/cloud-builders/gcloud
+    id: "Cloud SQL Proxy Setup"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        echo "🔧 Installing Cloud SQL Proxy..."
+        wget https://dl.google.com/cloudsql/cloud_sql_proxy.linux.amd64 -O cloud_sql_proxy
+        chmod +x cloud_sql_proxy
+
+        echo "🔐 Writing service account key..."
+        echo "$_CLOUD_SQL_KEY" > /tmp/cloud_sql_key.json
+
+        echo "🚀 Starting Cloud SQL Proxy..."
+        ./cloud_sql_proxy -instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT} -credential_file=/tmp/cloud_sql_key.json &
+        echo "✅ Cloud SQL Proxy started on localhost:${_DB_PORT}"
+
   # ------------------------------------------------------
   # 1) Install Terraform
-  # -------------------------------------------------------
+  # ------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
     entrypoint: "sh"
     id: "Terraform Init & Apply"
@@ -27,11 +53,9 @@ steps:
 
         echo "🚀 Applying Terraform..."
         terraform apply -input=false -auto-approve tfplan
-  
-    
 
   # ---------------------------------------------------------
-  # 1.1) Initialize Database (create table)
+  # 1.1) Initialize Database (create table) via Proxy
   # ---------------------------------------------------------
   - name: python:3.11
     id: "Init Database"
@@ -48,9 +72,15 @@ steps:
           echo "⚠ .env file not found!"
           exit 1
         fi
+
         cd app
         pip install -r requirements.txt
+
+        export DB_HOST=127.0.0.1
+        export DB_PORT=${_DB_PORT}
+
         INIT_DB_ONLY=true python app.py
+
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
   # ----------------------------------------------------------
@@ -64,7 +94,6 @@ steps:
         "."
       ]
 
-
   # ----------------------------------------------------------
   # 3) Push Docker Image
   # ----------------------------------------------------------
@@ -75,7 +104,6 @@ steps:
         "push",
         "${_IMAGE}:${_TAG}"
       ]
-
 
   # ----------------------------------------------------------
   # 4) Deploy to GKE
@@ -91,14 +119,12 @@ steps:
         gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
+
         echo "📦 Applying Kubernetes manifests..."
-        
         kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
-        
-       
-        echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
+        echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
 
         echo "⏳ Waiting for rollout..."
@@ -109,7 +135,6 @@ steps:
           exit 1
         )
 
-
   # ----------------------------------------------------------
   # 5) Post-deployment checks & integration tests
   # ----------------------------------------------------------
@@ -118,7 +143,6 @@ steps:
     entrypoint: 'bash'
     env:
       - API_KEY=chinnu31
-
     args:
       - '-c'
       - |
@@ -175,7 +199,5 @@ steps:
 
         echo " Integration tests passed."
 
-
-  
 images:
   - "${_IMAGE}:${_TAG}"
