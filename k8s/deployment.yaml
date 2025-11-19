@@ -74,6 +74,7 @@ spec:
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.1
           args:
             - "--port=5432"
+            - "--address=0.0.0.0"
             - "my-project-app-477009:us-central1:product-db-instance"
           securityContext:
             runAsNonRoot: true
