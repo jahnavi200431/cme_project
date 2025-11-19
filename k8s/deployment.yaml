@@ -1,64 +1,115 @@
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: gke-rest-api
-  labels:
-    app: gke-rest-api
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: gke-rest-api
-  template:
-    metadata:
-      labels:
-        app: gke-rest-api
-    spec:
-      containers:
-        - name: gke-rest-api
-          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
-          ports:
-            - containerPort: 8080
-          env:
-            - name: DB_HOST
-              value: 127.0.0.1
-            - name: DB_PORT
-              value: "5432"
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
-            - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 20
+provider "google" {
+  project = var.project_id
+  region  = var.region
+  zone    = var.zone
+}
 
-        - name: cloud-sql-proxy
-          image: gcr.io/cloudsql-docker/gce-proxy:1.34
-          command:
-            - "/cloud_sql_proxy"
-            - "-instances=${PROJECT_ID}:us-central1:product-db-instance=tcp:5432"
-            - "-credential_file=/secrets/cloudsql/key.json"
-          volumeMounts:
-            - name: cloudsql-instance-credentials
-              mountPath: /secrets/cloudsql
-              readOnly: true
+data "google_client_config" "current" {}
 
-      volumes:
-        - name: cloudsql-instance-credentials
-          secret:
-            secretName: cloudsql-instance-credentials
+locals {
+  node_sa = "product-api-gsa@${var.project_id}.iam.gserviceaccount.com"
+}
+
+# ----------------------------
+# IAM for Cloud SQL access
+# ----------------------------
+resource "google_project_iam_member" "cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${local.node_sa}"
+}
+
+# ----------------------------
+# GKE Cluster
+# ----------------------------
+resource "google_container_cluster" "gke" {
+  name                     = "product-gke-cluster"
+  location                 = var.zone
+  remove_default_node_pool = true
+  initial_node_count       = 1
+}
+
+# ----------------------------
+# Node pool
+# ----------------------------
+resource "google_container_node_pool" "node_pool" {
+  name     = "api-node-pool"
+  cluster  = google_container_cluster.gke.name
+  location = var.zone
+
+  node_config {
+    machine_type    = "e2-small"
+    service_account = local.node_sa
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/logging.write",
+      "https://www.googleapis.com/auth/monitoring",
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+
+  initial_node_count = 2
+}
+
+# ----------------------------
+# Cloud SQL instance with Private IP
+# ----------------------------
+resource "google_sql_database_instance" "postgres" {
+  name             = "product-db-instance"
+  database_version = "POSTGRES_15"
+  region           = var.region
+
+  settings {
+    tier = "db-f1-micro"
+    ip_configuration {
+      ipv4_enabled   = false
+      private_network = "projects/${var.project_id}/global/networks/default"
+    }
+  }
+}
+
+resource "google_sql_database" "db" {
+  name     = "productdb"
+  instance = google_sql_database_instance.postgres.name
+}
+
+resource "google_sql_user" "root" {
+  name     = var.db_user
+  password = var.db_password
+  instance = google_sql_database_instance.postgres.name
+}
+
+# ----------------------------
+# Service account key for Cloud SQL Proxy
+# ----------------------------
+resource "google_service_account_key" "cloudsql_proxy_key" {
+  service_account_id = local.node_sa
+}
+
+# ----------------------------
+# Kubernetes provider (after cluster is ready)
+# ----------------------------
+provider "kubernetes" {
+  host                   = "https://${google_container_cluster.gke.endpoint}"
+  cluster_ca_certificate = base64decode(google_container_cluster.gke.master_auth[0].cluster_ca_certificate)
+  token                  = data.google_client_config.current.access_token
+}
+
+# ----------------------------
+# Kubernetes Secret for Cloud SQL Proxy
+# ----------------------------
+resource "kubernetes_secret" "cloudsql_instance_credentials" {
+  metadata {
+    name      = "cloudsql-instance-credentials"
+    namespace = "default"
+  }
+
+  data = {
+    "key.json" = google_service_account_key.cloudsql_proxy_key.private_key
+  }
+
+  type = "Opaque"
+
+  lifecycle {
+    ignore_changes = [data]   # prevents errors if secret already exists
+  }
+}
