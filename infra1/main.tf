@@ -88,10 +88,7 @@ resource "google_sql_database_instance" "postgres" {
       ipv4_enabled = true
 
       # ⚠️ Not modifying as per your request
-      authorized_networks {
-        name  = "any"
-        value = "0.0.0.0/0"
-      }
+     
     }
   }
 }
