@@ -35,7 +35,7 @@ steps:
     id: "Cloud SQL Proxy"
     entrypoint: "/cloud_sql_proxy"
     args:
-      - "-instances=${_DB_INSTANCE_CONNECTION}=tcp:${_DB_PORT}"
+      - "-instances=my-project-app-477009:us-central1:product-db-instance=tcp:5432"
       - "-credential_file=/tmp/cloud_sql_key.json"
 
   # ------------------------------------------------------
