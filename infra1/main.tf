@@ -58,7 +58,7 @@ resource "google_container_node_pool" "node_pool" {
   location = var.zone
 
   node_config {
-    machine_type    = "e2-medium"
+    machine_type    = "e2-small"
 
     # ✔ Your custom service account
     service_account = local.node_sa
