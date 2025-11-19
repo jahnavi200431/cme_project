@@ -21,6 +21,8 @@ steps:
   - name: gcr.io/cloud-builders/gcloud
     id: "Cloud SQL Proxy Setup"
     entrypoint: "bash"
+    env:
+      - "_CLOUD_SQL_KEY=$_CLOUD_SQL_KEY"
     args:
       - "-c"
       - |
