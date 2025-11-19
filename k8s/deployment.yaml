@@ -1,31 +1,9 @@
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: api-backendconfig
-spec:
-  healthCheck:
-    checkIntervalSec: 10
-    timeoutSec: 5
-    healthyThreshold: 2
-    unhealthyThreshold: 3
-    port: 8080
-    requestPath: /health
-
----
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gke-rest-api
-  labels:
-    app: gke-rest-api
 spec:
   replicas: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   selector:
     matchLabels:
       app: gke-rest-api
@@ -40,11 +18,12 @@ spec:
           ports:
             - containerPort: 8080
 
+          # Probes
           readinessProbe:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 30   # Give time to connect to DB
+            initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 10
 
@@ -55,14 +34,6 @@ spec:
             initialDelaySeconds: 60
             periodSeconds: 20
             failureThreshold: 5
-
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
 
           env:
             - name: DB_HOST
@@ -96,39 +67,14 @@ spec:
                   name: db-credentials
                   key: API_KEY
 
----
-
-apiVersion: v1
-kind: Service
-metadata:
-  name: gke-rest-api-service
-spec:
-  type: LoadBalancer
-  selector:
-    app: gke-rest-api
-  ports:
-    - name: http
-      port: 80
-      protocol: TCP
-      targetPort: 8080
-
----
-
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: gke-rest-api-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: gke-rest-api
-  minReplicas: 2
-  maxReplicas: 5
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 60
+        # ------------------------------------------------------
+        # CLOUD SQL AUTH PROXY SIDECAR
+        # ------------------------------------------------------
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.1
+          args:
+            - "--port=5432"
+            - "my-project-app-477009:us-central1:product-db-instance"
+          securityContext:
+            runAsNonRoot: true
+      restartPolicy: Always
