@@ -92,10 +92,11 @@ resource "google_sql_database_instance" "postgres" {
       private_network = google_compute_network.vpc_network.self_link  # Link to VPC network
     }
 
-    # Set deletion_protection to false to allow instance deletion
-    deletion_protection = false
+    # Move deletion_protection inside the settings block
+    deletion_protection = false  # Correct location for this argument
   }
 }
+
 
 
 # Create DB
