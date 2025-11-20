@@ -53,7 +53,7 @@ resource "google_project_iam_member" "cloudsql_client" {
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
   location                 = var.zone
-  deletion_protection      = false
+  deletion_protection      = false   # Set to false to allow deletion
   remove_default_node_pool = true
   initial_node_count       = 1
 
@@ -91,8 +91,12 @@ resource "google_sql_database_instance" "postgres" {
       ipv4_enabled    = false  # Disable public IP for Cloud SQL
       private_network = google_compute_network.vpc_network.self_link  # Link to VPC network
     }
+
+    # Set deletion_protection to false to allow instance deletion
+    deletion_protection = false
   }
 }
+
 
 # Create DB
 resource "google_sql_database" "db" {
