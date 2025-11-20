@@ -93,7 +93,7 @@ resource "google_sql_database_instance" "postgres" {
     }
 
     # Move deletion_protection inside the settings block
-    #deletion_protection = false  # Correct location for this argument
+    deletion_protection = true  # Correct location for this argument
   }
 }
 
