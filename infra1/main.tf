@@ -9,6 +9,7 @@ provider "google" {
 # ------------------------------------------------------------
 resource "google_compute_network" "vpc_network" {
   name                    = "product-vpc"
+  deletion_protection      = false
   auto_create_subnetworks  = false
 }
 
@@ -25,11 +26,11 @@ resource "google_compute_subnetwork" "private_subnet" {
 # IAM Permissions for the Service Account
 # ------------------------------------------------------------
 
-locals {
+/* locals {
   node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
-}
+} */
 
-resource "google_project_iam_member" "logwriter" {
+/* resource "google_project_iam_member" "logwriter" {
   project = var.project_id
   role    = "roles/logging.logWriter"
   member  = "serviceAccount:${local.node_sa}"
@@ -45,7 +46,7 @@ resource "google_project_iam_member" "cloudsql_client" {
   project = var.project_id
   role    = "roles/cloudsql.client"
   member  = "serviceAccount:${local.node_sa}"
-}
+} */
 
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
@@ -53,7 +54,7 @@ resource "google_project_iam_member" "cloudsql_client" {
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
   location                 = var.zone
-  deletion_protection      = true   # Set to false to allow deletion
+  deletion_protection      = false   # Set to false to allow deletion
   remove_default_node_pool = true
   initial_node_count       = 1
 

@@ -9,7 +9,7 @@ output "gke_endpoint" {
 } */
 
 
-output "node_service_account" {
+/* output "node_service_account" {
   description = "Service account used by the GKE node pool"
   value       = local.node_sa
-}
+} */
