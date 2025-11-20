@@ -5,7 +5,7 @@ provider "google" {
 }
 
 # ------------------------------------------------------------
-## VPC and Subnet Configuration
+# VPC and Subnet Configuration
 # ------------------------------------------------------------
 resource "google_compute_network" "vpc_network" {
   name                    = "product-vpc"
@@ -53,7 +53,7 @@ resource "google_project_iam_member" "cloudsql_client" {
 resource "google_container_cluster" "gke" {
   name                     = "product-gke-cluster"
   location                 = var.zone
-  deletion_protection      = false   # Set to false to allow deletion
+  deletion_protection      = true   # Set to false to allow deletion
   remove_default_node_pool = true
   initial_node_count       = 1
 
