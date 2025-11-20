@@ -14,10 +14,10 @@ resource "google_compute_network" "vpc_network" {
 
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
-  name          = "private-subnet"
-  region        = var.region
-  network       = google_compute_network.vpc_network.name
-  ip_cidr_range = "10.0.0.0/24"  # Adjust the CIDR range as per your requirements
+  name                     = "private-subnet"
+  region                   = var.region
+  network                  = google_compute_network.vpc_network.name
+  ip_cidr_range            = "10.0.0.0/24"  # Adjust the CIDR range as per your requirements
   private_ip_google_access = true  # Enable Private Google Access
 }
 
@@ -57,7 +57,7 @@ resource "google_container_cluster" "gke" {
   remove_default_node_pool = true
   initial_node_count       = 1
 
-  network = google_compute_network.vpc_network.name
+  network    = google_compute_network.vpc_network.name
   subnetwork = google_compute_subnetwork.private_subnet.name
 
   private_cluster_config {
@@ -77,7 +77,6 @@ resource "google_container_cluster" "gke" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
-
 }
 
 # ------------------------------------------------------------
@@ -92,7 +91,7 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
 
     ip_configuration {
-      ipv4_enabled = false  # Disable public IP for Cloud SQL
+      ipv4_enabled    = false  # Disable public IP for Cloud SQL
       private_network = google_compute_network.vpc_network.self_link  # Link to VPC network
     }
   }
@@ -114,13 +113,16 @@ resource "google_sql_user" "root" {
 # ------------------------------------------------------------
 # Firewall Rules to allow GKE to access Cloud SQL privately
 # ------------------------------------------------------------
-
 resource "google_compute_firewall" "allow_internal" {
-  name    = "allow-internal-traffic"
-  network = google_compute_network.vpc_network.name
+  name      = "allow-internal-traffic"
+  network   = google_compute_network.vpc_network.name
   direction = "INGRESS"
-  priority = 1000
-  action   = "ALLOW"
+  priority  = 1000
+
+  allow {
+    protocol = "tcp"
+    ports    = ["3306"]  # Adjust port based on Cloud SQL or other application
+  }
 
   source_ranges = ["10.0.0.0/24"]  # Allow internal network traffic within VPC
 
@@ -156,7 +158,7 @@ resource "kubernetes_secret" "cloud_sql_proxy_secret" {
   }
 
   data = {
-    "DB_HOST"     = google_sql_database_instance.postgres.private_ip
+    "DB_HOST"     = google_sql_database_instance.postgres.ip_address[0].ip_address  # Correct reference to private IP
     "DB_USER"     = var.db_user
     "DB_PASSWORD" = var.db_password
   }
@@ -188,7 +190,7 @@ resource "kubernetes_deployment" "cloud_sql_proxy" {
       }
 
       spec {
-        containers {
+        container {
           name  = "cloud-sql-proxy"
           image = "gcr.io/cloudsql-docker/gce-proxy:1.19.1"  # Cloud SQL Proxy image
 
@@ -206,7 +208,7 @@ resource "kubernetes_deployment" "cloud_sql_proxy" {
 
           env {
             name  = "DB_HOST"
-            value = google_sql_database_instance.postgres.private_ip
+            value = google_sql_database_instance.postgres.ip_address[0].ip_address  # Correct reference to private IP
           }
 
           env {
@@ -243,8 +245,8 @@ resource "kubernetes_service" "api_service" {
       app = "product-api"
     }
 
-    ports {
-      port     = 80
+    port {
+      port        = 80
       target_port = 8080
     }
 
