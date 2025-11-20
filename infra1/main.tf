@@ -79,7 +79,7 @@ resource "google_container_cluster" "gke" {
 # ------------------------------------------------------------
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
-resource "google_sql_database_instance" "postgres" {
+/* resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
   database_version = "POSTGRES_15"
   region           = var.region
@@ -95,22 +95,24 @@ resource "google_sql_database_instance" "postgres" {
     # Move deletion_protection inside the settings block
     deletion_protection = true  # Correct location for this argument
   }
-}
+} */
 
 
 
 # Create DB
-resource "google_sql_database" "db" {
+/* resource "google_sql_database" "db" {
   name     = "productdb"
   instance = google_sql_database_instance.postgres.name
-}
+} */
 
 # Create DB user
+/*
 resource "google_sql_user" "root" {
   name     = var.db_user
   password = var.db_password
   instance = google_sql_database_instance.postgres.name
 }
+ */
 
 # ------------------------------------------------------------
 # Firewall Rules to allow GKE to access Cloud SQL privately
