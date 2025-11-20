@@ -144,9 +144,19 @@ resource "google_container_cluster" "gke_with_sql_proxy" {
   initial_node_count       = 1
 
   private_cluster_config {
-    enable_private_nodes    = true   # Correct argument name (plural)
-    enable_private_endpoint = true
-    }
+    enable_private_nodes    = true   # Enable private nodes
+    enable_private_endpoint = true   # Enable private endpoint for the master
+  }
+
+  master_authorized_networks_config {
+    enabled = true
+    cidr_blocks = [
+      {
+        cidr_block = "0.0.0.0/0"  # Allows access from any IP (adjust as necessary)
+        display_name = "All Networks"
+      }
+    ]
+  }
 
   node_config {
     oauth_scopes = [
