@@ -9,7 +9,6 @@ provider "google" {
 # ------------------------------------------------------------
 resource "google_compute_network" "vpc_network" {
   name                    = "product-vpc"
-  deletion_protection      = false
   auto_create_subnetworks  = false
 }
 
