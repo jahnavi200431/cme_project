@@ -135,5 +135,15 @@ resource "google_container_cluster" "gke_with_sql_proxy" {
   network                  = google_compute_network.vpc_network.name
   subnetwork               = google_compute_subnetwork.private_subnet.name
   initial_node_count       = 1
+
   private_cluster_config {
-    enable_private_node
+    enable_private_nodes    = true   # Correct argument name (plural)
+    enable_private_endpoint = true
+    }
+
+  node_config {
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+}
