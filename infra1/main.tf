@@ -5,7 +5,7 @@ provider "google" {
 }
 
 # ------------------------------------------------------------
-# VPC and Subnet Configuration
+## VPC and Subnet Configuration
 # ------------------------------------------------------------
 resource "google_compute_network" "vpc_network" {
   name                    = "product-vpc"
