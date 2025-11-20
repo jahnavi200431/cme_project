@@ -65,11 +65,8 @@ resource "google_container_cluster" "gke" {
     enable_private_endpoint = true
   }
 
-  master_authorized_networks_config {
-    enabled = false
-  }
+  master_authorized_networks_config {}
 
-  # Disable legacy GKE metadata server
   node_config {
     oauth_scopes = [
       "https://www.googleapis.com/auth/logging.write",
@@ -139,117 +136,4 @@ resource "google_container_cluster" "gke_with_sql_proxy" {
   subnetwork               = google_compute_subnetwork.private_subnet.name
   initial_node_count       = 1
   private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = true
-  }
-
-  node_config {
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
-}
-
-# Set up the Kubernetes secret for Cloud SQL credentials
-resource "kubernetes_secret" "cloud_sql_proxy_secret" {
-  metadata {
-    name      = "cloud-sql-proxy-secret"
-    namespace = "default"
-  }
-
-  data = {
-    "DB_HOST"     = google_sql_database_instance.postgres.ip_address[0].ip_address  # Correct reference to private IP
-    "DB_USER"     = var.db_user
-    "DB_PASSWORD" = var.db_password
-  }
-}
-
-# ------------------------------------------------------------
-# Deploy Cloud SQL Proxy as a Kubernetes Pod
-# ------------------------------------------------------------
-resource "kubernetes_deployment" "cloud_sql_proxy" {
-  metadata {
-    name      = "cloud-sql-proxy"
-    namespace = "default"
-  }
-
-  spec {
-    replicas = 1
-
-    selector {
-      match_labels = {
-        app = "cloud-sql-proxy"
-      }
-    }
-
-    template {
-      metadata {
-        labels = {
-          app = "cloud-sql-proxy"
-        }
-      }
-
-      spec {
-        container {
-          name  = "cloud-sql-proxy"
-          image = "gcr.io/cloudsql-docker/gce-proxy:1.19.1"  # Cloud SQL Proxy image
-
-          command = [
-            "/cloud_sql_proxy",
-            "-dir=/cloudsql",
-            "-instances=${google_sql_database_instance.postgres.connection_name}",
-            "-credential_file=/secrets/cloudsql/credentials.json"
-          ]
-
-          volume_mounts {
-            mount_path = "/cloudsql"
-            name       = "cloudsql"
-          }
-
-          env {
-            name  = "DB_HOST"
-            value = google_sql_database_instance.postgres.ip_address[0].ip_address  # Correct reference to private IP
-          }
-
-          env {
-            name  = "DB_USER"
-            value = var.db_user
-          }
-
-          env {
-            name  = "DB_PASSWORD"
-            value = var.db_password
-          }
-        }
-
-        volumes {
-          name = "cloudsql"
-          empty_dir {}
-        }
-      }
-    }
-  }
-}
-
-# ------------------------------------------------------------
-# Kubernetes Service for API (connect with Cloud SQL Proxy)
-# ------------------------------------------------------------
-resource "kubernetes_service" "api_service" {
-  metadata {
-    name      = "product-api"
-    namespace = "default"
-  }
-
-  spec {
-    selector = {
-      app = "product-api"
-    }
-
-    port {
-      port        = 80
-      target_port = 8080
-    }
-
-    type = "LoadBalancer"
-  }
-}
+    enable_private_node
