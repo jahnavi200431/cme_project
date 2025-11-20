@@ -148,11 +148,8 @@ resource "google_container_cluster" "gke_with_sql_proxy" {
     enable_private_endpoint = true   # Enable private endpoint for the master
   }
 
-  # Enable master authorized networks
+  # Configure master authorized networks
   master_authorized_networks_config {
-    enabled = true  # Enable authorized networks for the GKE master
-
-    # Define allowed CIDR blocks for accessing the master
     cidr_blocks {
       cidr_block = "0.0.0.0/0"  # Allow all networks (use more restrictive ranges if needed)
       display_name = "Allow All"
