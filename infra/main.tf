@@ -15,7 +15,7 @@ resource "google_compute_network" "vpc_network" {
 resource "google_compute_subnetwork" "private_subnet" {
   name          = var.subnet_name
   region        = var.region
-  network       = google_compute_network.vpc.name
+  network       = google_compute_network.vpc_network.name
   ip_cidr_range = "10.0.0.0/24"
 }
 
