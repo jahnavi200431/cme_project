@@ -95,7 +95,6 @@ steps:
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
         
-        kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
         
        
