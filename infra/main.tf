@@ -7,15 +7,24 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
-resource "google_compute_network" "vpc_network" {
-  name                    = var.vpc_name
-  auto_create_subnetworks  = false
-   lifecycle {
-      ignore_changes = [name]  # Ignore changes to the cluster name
-    }
+data "google_compute_network" "vpc_network" {
+  name = var.vpc_name  # Replace with your VPC name
 }
+
+# Only create the VPC network if it does not exist
+resource "google_compute_network" "vpc_network" {
+  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1  # Create if network doesn't exist
+  name                   = var.vpc_name
+  auto_create_subnetworks = false
+}
+
+data "google_compute_subnetwork" "private_subnet" {
+  name          = var.subnet_name
+}
+
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
+    count                  = length(data.google_compute_subnetwork.private_subnet.id) > 0 ? 0 : 1
   name          = var.subnet_name
   region        = var.region
   network       = google_compute_network.vpc_network.name
@@ -28,7 +37,11 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
+data "google_container_cluster" "gke" {
+    name = "product-gke-cluster"
+    }
 resource "google_container_cluster" "gke" {
+    count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1
   name                     = "product-gke-cluster"
   location                 = var.zone
   deletion_protection      = false   # Set to false to allow deletion
