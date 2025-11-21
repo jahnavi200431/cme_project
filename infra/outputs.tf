@@ -1,11 +1,9 @@
 output "gke_endpoint" {
-  value = google_container_cluster.gke[count.index].endpoint  # Use count.index
+  value = google_container_cluster.gke.endpoint  # Direct reference without count.index
 }
 
-# outputs.tf
 output "db_instance_name" {
-    description = "The name of the PostgreSQL Cloud SQL instance"
-  value = google_sql_database_instance.postgres[count.index].name  # Use count.index
+  value = google_sql_database_instance.postgres.name  # Direct reference without count.index
 }
 
 output "db_user" {

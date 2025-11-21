@@ -7,35 +7,29 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
-# Only create the VPC network if it does not exist
-# Declare a data block to check for the existing VPC network
-data "google_compute_network" "vpc_network" {
-  name = "products-vpc"
-}
 
-
-# Create the VPC network if it doesn't exist
+# Check if the VPC network exists, if not, create it
 resource "google_compute_network" "vpc_network" {
   count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
   name                   = "products-vpc"
   auto_create_subnetworks = false
 }
+
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
-  count         = google_compute_network.vpc_network.*.name != [] ? 1 : 0
-  name          = "private-subnet"
-  region        = var.region
-  network       = google_compute_network.vpc_network[count.index].name  # Use count.index
-  ip_cidr_range = "10.0.0.0/24"
+  count          = google_compute_network.vpc_network.*.name != [] ? 1 : 0
+  name           = "private-subnet"
+  region         = var.region
+  network        = google_compute_network.vpc_network[count.index].name  # Use count.index
+  ip_cidr_range  = "10.0.0.0/24"
 }
+
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
-data "google_container_cluster" "gke" {
-    name="gke"
-    }
+
 resource "google_container_cluster" "gke" {
-  count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1  # Create if it doesn't exist
+  count                  = length(google_container_cluster.gke) > 0 ? 0 : 1  # Create if it doesn't exist
   name                   = "product-gke-cluster"
   location               = var.zone
   deletion_protection    = false
@@ -64,6 +58,7 @@ resource "google_container_cluster" "gke" {
 # ------------------------------------------------------------
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
+
 resource "google_sql_database_instance" "postgres" {
   count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Create if VPC exists
   name            = "product-db-instance"
@@ -78,44 +73,50 @@ resource "google_sql_database_instance" "postgres" {
     }
   }
 }
+
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
+  instance = google_sql_database_instance.postgres.name  # Direct reference without count.index
 }
 
 # Create DB user
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
+  instance = google_sql_database_instance.postgres.name  # Direct reference without count.index
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
+# ------------------------------------------------------------
+# Create Secret Manager Secret
+# ------------------------------------------------------------
 
 resource "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"
 
   replication {
-     auto {}  # This specifies that the secret will be automatically replicated across all regions
-   }
+    auto {}  # Specifies that the secret will be automatically replicated across all regions
+  }
+
   lifecycle {
     prevent_destroy = true  # Prevents destruction of the secret
     ignore_changes   = [secret_id]  # Avoid changes to the secret_id if it already exists
   }
 }
 
-
 # Declare the secret version
 resource "google_secret_manager_secret_version" "db_password_version" {
   secret      = google_secret_manager_secret.db_password.id
-  secret_data = var.db_password  # You should set this variable in terraform.tfvars or at runtime
+  secret_data = var.db_password  # Set this variable in terraform.tfvars or at runtime
 }
+
 # ------------------------------------------------------------
 # Firewall Rules to allow GKE to access Cloud SQL privately
 # ------------------------------------------------------------
+
 resource "google_compute_firewall" "allow_internal" {
   name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network.name  # Use count.index
+  network    = google_compute_network.vpc_network.name  # Direct reference without count.index
   direction  = "INGRESS"
   priority   = 1000
 
@@ -127,7 +128,6 @@ resource "google_compute_firewall" "allow_internal" {
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
 }
-
 
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
