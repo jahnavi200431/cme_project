@@ -10,6 +10,9 @@ provider "google" {
 resource "google_compute_network" "vpc_network" {
   name                    = var.vpc_name
   auto_create_subnetworks  = false
+   lifecycle {
+      ignore_changes = [name]  # Ignore changes to the cluster name
+    }
 }
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
@@ -17,6 +20,9 @@ resource "google_compute_subnetwork" "private_subnet" {
   region        = var.region
   network       = google_compute_network.vpc_network.name
   ip_cidr_range = "10.0.0.0/24"
+   lifecycle {
+      ignore_changes = [name]  # Ignore changes to the cluster name
+    }
 }
 
 # ------------------------------------------------------------
@@ -46,6 +52,9 @@ resource "google_container_cluster" "gke" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
+ lifecycle {
+    ignore_changes = [name]  # Ignore changes to the cluster name
+  }
 }
 
 # ------------------------------------------------------------
@@ -63,11 +72,17 @@ resource "google_sql_database_instance" "postgres" {
       private_network = google_compute_network.vpc_network.id
     }
   }
+ lifecycle {
+    ignore_changes = [name]  # Ignore changes to the cluster name
+  }
 }
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
   instance = google_sql_database_instance.postgres.name
+   lifecycle {
+      ignore_changes = [name]  # Ignore changes to the cluster name
+    }
 }
 
 # Create DB user
@@ -76,14 +91,21 @@ resource "google_sql_user" "db_user" {
   name     = var.db_user
   instance = google_sql_database_instance.postgres.name
   password = data.google_secret_manager_secret_version.db_password.secret_data
+   lifecycle {
+      ignore_changes = [name]  # Ignore changes to the cluster name
+    }
 }
 
-# Declare the secret
+
 resource "google_secret_manager_secret" "db_password" {
-  secret_id = "db-password"  # The name of your secret
+  secret_id = "db-password"
 
   replication {
-    auto {}  # This specifies that the secret will be automatically replicated across all regions
+     auto {}  # This specifies that the secret will be automatically replicated across all regions
+   }
+  lifecycle {
+    prevent_destroy = true  # Prevents destruction of the secret
+    ignore_changes   = [secret_id]  # Avoid changes to the secret_id if it already exists
   }
 }
 
@@ -115,7 +137,7 @@ resource "google_compute_firewall" "allow_internal" {
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
 # ------------------------------------------------------------
-resource "google_container_cluster" "gke_with_sql_proxy" {
+/* resource "google_container_cluster" "gke_with_sql_proxy" {
   name                     = "product-gke-cluster"
   location                 = var.zone
   network                  = google_compute_network.vpc_network.name
@@ -140,4 +162,4 @@ resource "google_container_cluster" "gke_with_sql_proxy" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
-}
+} */
