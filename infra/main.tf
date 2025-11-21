@@ -76,7 +76,7 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[0].id  # Correctly reference network
+      private_network = google_compute_network.vpc_network[count.index].id  # Correctly reference network
     }
   }
 }
@@ -125,7 +125,7 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 
 resource "google_compute_firewall" "allow_internal" {
   name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network[0].name  # Correctly reference the VPC
+  network    = google_compute_network.vpc_network[count.index].name  # Correctly reference the VPC
   direction  = "INGRESS"
   priority   = 1000
 
