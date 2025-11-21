@@ -7,10 +7,6 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
-data "google_compute_network" "vpc_network" {
-  name = var.vpc_name  # Replace with your VPC name
-}
-
 # Only create the VPC network if it does not exist
 resource "google_compute_network" "vpc_network" {
   count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1  # Create if network doesn't exist
@@ -18,28 +14,17 @@ resource "google_compute_network" "vpc_network" {
   auto_create_subnetworks = false
 }
 
-data "google_compute_subnetwork" "private_subnet" {
-  name          = var.subnet_name
-}
-
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
-    count                  = length(data.google_compute_subnetwork.private_subnet.id) > 0 ? 0 : 1
-  name          = var.subnet_name
+  name          = "private-subnet"
   region        = var.region
-  network       = google_compute_network.vpc_network.name
+  network       = google_compute_network.vpc_network[count.index].name  # Use count.index
   ip_cidr_range = "10.0.0.0/24"
-   lifecycle {
-      ignore_changes = [name]  # Ignore changes to the cluster name
-    }
 }
 
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
-data "google_container_cluster" "gke" {
-    name = "product-gke-cluster"
-    }
 resource "google_container_cluster" "gke" {
     count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1
   name                     = "product-gke-cluster"
@@ -65,9 +50,6 @@ resource "google_container_cluster" "gke" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
- lifecycle {
-    ignore_changes = [name]  # Ignore changes to the cluster name
-  }
 }
 
 # ------------------------------------------------------------
@@ -82,13 +64,11 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"  # Small instance size
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network.id
+      private_network = google_compute_network.vpc_network[count.index].id  # Use count.index
     }
   }
- lifecycle {
-    ignore_changes = [name]  # Ignore changes to the cluster name
-  }
 }
+
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
@@ -133,7 +113,7 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
   name      = "allow-internal-traffic"
-  network   = google_compute_network.vpc_network.name
+  network   = google_compute_network.vpc_network[count.index].name  # Use count.index
   direction = "INGRESS"
   priority  = 1000
 
