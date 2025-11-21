@@ -8,7 +8,7 @@ provider "google" {
 # VPC Network (Create if it doesn't exist)
 # ------------------------------------------------------------
 
-data "google_compute_network" "vpc_network" {
+resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
   auto_create_subnetworks = false
 }
@@ -16,7 +16,7 @@ data "google_compute_network" "vpc_network" {
 # ------------------------------------------------------------
 # Private Subnet in the VPC
 # ------------------------------------------------------------
-data "google_compute_subnetwork" "private_subnet" {
+resource "google_compute_subnetwork" "private_subnet" {
   name          = var.subnet_name
   region        = var.region
   network       = google_compute_network.vpc_network.name
