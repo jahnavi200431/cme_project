@@ -30,7 +30,7 @@ variable "cluster_name" {
 }
 variable "db_instance_name" {
   description = "The name of the PostgreSQL database"
-  default     = "products-db-instance"
+  default     = "product-db-instance"
 }
 
 variable "db_name" {
