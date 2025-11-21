@@ -1,7 +1,55 @@
+# -------------------------------------------------------------------
+# 1) Kubernetes ServiceAccount (use with Workload Identity)
+# -------------------------------------------------------------------
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-workload-sa
+  namespace: default
+---
+# -------------------------------------------------------------------
+# 2) SecretProviderClass (Secret Manager CSI Driver) - GCP provider
+#    This mounts secrets from Google Secret Manager and creates a
+#    Kubernetes Secret "db-credentials" containing DB_PASS and API_KEY.
+# -------------------------------------------------------------------
+apiVersion: secrets-store.csi.x-k8s.io/v1
+kind: SecretProviderClass
+metadata:
+  name: gcp-secrets-spc
+  namespace: default
+spec:
+  provider: gcp
+  # secretObjects instructs the driver to create a k8s Secret from the mounted SM secrets
+  secretObjects:
+    - secretName: db-credentials              # k8s Secret that will be created
+      type: Opaque
+      data:
+        - objectName: db_password             # file name / object name in the CSI mount
+          key: DB_PASS                        # key in the created k8s Secret
+        - objectName: api-key
+          key: API_KEY
+  # Parameters: list the SM resources to fetch and optionally file names
+  parameters:
+    secrets: |
+      - resourceName: "projects/my-project-app-477009/secrets/db_password"
+        fileName: "db_password"
+        version: "latest"
+      - resourceName: "projects/my-project-app-477009/secrets/api-key"
+        fileName: "api-key"
+        version: "latest"
+
+---
+# -------------------------------------------------------------------
+# 3) Deployment: app container + Cloud SQL Proxy sidecar
+#    - app reads DB_HOST, DB_PORT, DB_NAME, DB_USER from env (you can keep those in a separate k8s secret or use stringData)
+#    - DB_PASS and API_KEY are created into k8s secret db-credentials by the CSI driver (see SecretProviderClass)
+# -------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: gke-rest-api
+  labels:
+    app: gke-rest-api
 spec:
   replicas: 2
   selector:
@@ -12,46 +60,133 @@ spec:
       labels:
         app: gke-rest-api
     spec:
+      serviceAccountName: app-workload-sa   # must be bound to a GSA that has SM & Cloud SQL client roles
+      # Mount the SecretProviderClass via CSI so the driver runs and syncs secretObjects
+      volumes:
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "gcp-secrets-spc"
+
       containers:
+        # -------------------------------
+        # Main application container
+        # -------------------------------
+        - name: rest-api
+          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+          ports:
+            - containerPort: 8080
 
-      # -------------------------------
-      # 🔥 Main Application (runs app.py)
-      # -------------------------------
-      - name: rest-api
-        image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
-        ports:
-          - containerPort: 8080
-        env:
-          - name: DB_HOST
-            value: "127.0.0.1"
-          - name: DB_PORT
-            value: "5432"
-          - name: DB_NAME
-            valueFrom:
-              secretKeyRef:
-                name: db-credentials
-                key: DB_NAME
-          - name: DB_USER
-            valueFrom:
-              secretKeyRef:
-                name: db-credentials
-                key: DB_USER
-          - name: DB_PASS
-            valueFrom:
-              secretKeyRef:
-                name: db-credentials
-                key: DB_PASS
+          # Fixed env: DB_HOST is the local proxy; DB_PASS and API_KEY come from the created k8s secret "db-credentials"
+          env:
+            - name: DB_HOST
+              value: "127.0.0.1"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "appdb"
+            - name: DB_USER
+              value: "user1"
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: DB_PASS
+            - name: API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: db-credentials
+                  key: API_KEY
 
-      # --------------------------------------
-      # 🟢 Cloud SQL Proxy — Only DB Tunnel
-      # --------------------------------------
-      - name: cloud-sql-proxy
-        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
-        args:
-          - "--address=0.0.0.0"
-          - "--port=5432"
-          - "--private-ip=false"
-          - "--auto-iam-authn"
-          - "my-project-app-477009:us-central1:products-db-instance=tcp:5432"
-        ports:
-          - containerPort: 5432
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 10
+
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
+
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+
+          # mount the CSI volume (optional — you may not need files inside the container)
+          volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+
+        # -------------------------------
+        # Cloud SQL Proxy sidecar (Public IP + Proxy)
+        # -------------------------------
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
+          # Use args with --instance and local binding (proxy listens on 127.0.0.1:5432)
+          args:
+            - "--address=127.0.0.1"
+            - "--port=5432"
+            - "--auto-iam-authn"
+            - "--instance=my-project-app-477009:us-central1:products-db-instance=tcp:5432"
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+          # no ports exposed in the Service. The app talks to 127.0.0.1:5432 inside the pod.
+          volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
+
+---
+# -------------------------------------------------------------------
+# 4) Service (LoadBalancer) for your app
+# -------------------------------------------------------------------
+apiVersion: v1
+kind: Service
+metadata:
+  name: gke-rest-api-service
+  labels:
+    app: gke-rest-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: gke-rest-api
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+---
+# -------------------------------------------------------------------
+# 5) HorizontalPodAutoscaler (optional: requires container resource requests)
+# -------------------------------------------------------------------
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: gke-rest-api-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: gke-rest-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
