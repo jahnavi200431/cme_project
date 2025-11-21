@@ -137,7 +137,7 @@ resource "google_compute_firewall" "allow_internal" {
   depends_on = [google_compute_network.vpc_network]
 }
 
-## ------------------------------------------------------------
+# ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
 # ------------------------------------------------------------
 /* resource "google_container_cluster" "gke_with_sql_proxy" {
