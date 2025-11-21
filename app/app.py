@@ -15,7 +15,7 @@ class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
             "severity": record.levelname,
-            "app": "gke-rest-api",
+            "app": "my-project-app-477009",
             "version": "1.0.0",
         }
         if isinstance(record.msg, dict):
@@ -32,7 +32,7 @@ root.setLevel(logging.INFO)
 root.handlers = []
 root.addHandler(json_handler)
 
-logger = logging.getLogger("gke-rest-api")
+logger = logging.getLogger("my-project-app-477009")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 

@@ -16,9 +16,9 @@ spec:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: gke-rest-api
+  name: my-project-app-477009
   labels:
-    app: gke-rest-api
+    app: my-project-app-477009
 spec:
   replicas: 2
   strategy:
@@ -28,15 +28,15 @@ spec:
       maxUnavailable: 0
   selector:
     matchLabels:
-      app: gke-rest-api
+      app: my-project-app-477009
   template:
     metadata:
       labels:
-        app: gke-rest-api
+        app: my-project-app-477009
     spec:
       containers:
-        - name: gke-rest-api
-          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+        - name: my-project-app-477009
+          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/my-project-app-477009:latest
           ports:
             - containerPort: 8080
 
@@ -102,11 +102,11 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gke-rest-api-service
+  name: my-project-app-477009-service
 spec:
   type: LoadBalancer
   selector:
-    app: gke-rest-api
+    app: my-project-app-477009
   ports:
     - name: http
       port: 80
@@ -118,12 +118,12 @@ spec:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: gke-rest-api-hpa
+  name: my-project-app-477009-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: gke-rest-api
+    name: my-project-app-477009
   minReplicas: 2
   maxReplicas: 5
   metrics:

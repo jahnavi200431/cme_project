@@ -1,7 +1,7 @@
 
 variable "project_id" {
   description = "The Google Cloud project ID"
-  default = "gke-rest-api"
+  default = "my-project-app-477009"
 }
 
 variable "region" {
