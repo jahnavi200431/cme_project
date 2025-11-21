@@ -35,7 +35,7 @@ resource "google_compute_subnetwork" "private_subnet" {
 # Data source to check if the GKE cluster exists
 
 resource "google_container_cluster" "cluster" {
-  count                  = (length(google_compute_network.vpc_network.id) > 0 && length(data.google_container_cluster.cluster.id) == 0) ? 1 : 0
+  count                  = (length(google_compute_network.vpc_network.id) > 0 && length(google_container_cluster.cluster.id) == 0) ? 1 : 0
   name                   = var.cluster_name
   location               = var.zone
   deletion_protection    = false
