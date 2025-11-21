@@ -29,9 +29,8 @@ resource "google_compute_subnetwork" "private_subnet" {
 resource "google_compute_address" "private_ip_address" {
   name         = "private-ip-address"
   address_type = "INTERNAL"  # Set the IP to internal (private IP)
-  network      = google_compute_network.vpc_network.name
   subnetwork   = google_compute_subnetwork.private_subnet.name
-  region       = var.region  # Ensure this is set to the correct region
+  region       = var.region
 }
 
 # ------------------------------------------------------------
@@ -58,21 +57,6 @@ resource "google_container_cluster" "cluster" {
   depends_on = [google_compute_subnetwork.private_subnet]
 }
 
-# ------------------------------------------------------------
-# Node Pool for GKE Cluster
-# ------------------------------------------------------------
-resource "google_container_node_pool" "node_pool" {
-  cluster   = google_container_cluster.cluster.name
-  location  = var.zone
-  node_count = 3
-
-  node_config {
-    machine_type = "e2-micro"
-    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
-  }
-
-  depends_on = [google_container_cluster.cluster]
-}
 
 # ------------------------------------------------------------
 # Cloud SQL Database Instance
