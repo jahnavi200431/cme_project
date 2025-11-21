@@ -60,7 +60,7 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"  # Small instance size
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.private_subnet.id
+      private_network = google_compute_network.vpc_network.id
     }
   }
 }
