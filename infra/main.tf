@@ -22,72 +22,7 @@ resource "google_compute_subnetwork" "private_subnet" {
   ip_cidr_range            = "10.0.0.0/24"
   private_ip_google_access = true  # Enable private Google access
 }
-
-# ------------------------------------------------------------
-# Reserve a Private IP Address (For Cloud SQL)
-# ------------------------------------------------------------
-resource "google_compute_global_address" "private_services_connection" {
-  name         = "private-services-connection"
-  address_type = "INTERNAL"  # Ensure the IP is internal
-}
-
-resource "google_compute_address" "private_ip_address" {
-  name         = "private-services-ip"
-  address_type = "INTERNAL"
-  subnetwork   = google_compute_subnetwork.private_subnet.name
-  region       = var.region
-}
-
-
-resource "google_compute_network_peering" "services_peering" {
-  name         = "private-services-peering"
-  network      = google_compute_network.vpc_network.name
-  peer_network = "projects/my-project-app-477009/global/networks/google-managed-services" # Correct Google service network
-
-  // Routes must be manually created; no need to specify `auto_create_routes` here.
-}
-
-resource "google_compute_service_attachment" "sql_service_attachment" {
-  name                  = "sql-service-attachment"
-  region                = var.region
-  connection_preference = "ACCEPT_ANY"  # Specify connection preference
-  enable_proxy_protocol = true          # Enable proxy protocol
-  nat_subnets           = [google_compute_subnetwork.private_subnet.id] # Ensure you specify NAT subnets
-
-  service         = "sql.googleapis.com"  # Cloud SQL service
-  network         = google_compute_network.vpc_network.id # Reference the network id
-  connection_id   = google_compute_address.private_ip_address.id # Private IP address for connection
-}
-
-
-# ------------------------------------------------------------
-# GKE Cluster (Create if not already present)
-# ------------------------------------------------------------
-resource "google_container_cluster" "cluster" {
-  name                     = var.cluster_name
-  location                 = var.zone
-  deletion_protection      = false
-  remove_default_node_pool = false
-
-  initial_node_count       = 1  # Ensure at least 1 node
-
-  network    = google_compute_network.vpc_network.name
-  subnetwork = google_compute_subnetwork.private_subnet.name
-
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = true
-  }
-
-  master_authorized_networks_config {}
-
-  depends_on = [google_compute_subnetwork.private_subnet]
-}
-
-
-# ------------------------------------------------------------
-# Cloud SQL Database Instance
-# ------------------------------------------------------------
+# Create the Cloud SQL Database Instance
 resource "google_sql_database_instance" "db_instance" {
   name            = var.db_instance_name
   database_version = "POSTGRES_13"
@@ -101,7 +36,23 @@ resource "google_sql_database_instance" "db_instance" {
     }
   }
 
-  depends_on = [google_compute_network.vpc_network, google_compute_address.private_ip_address]
+  depends_on = [google_compute_network.vpc_network]
+}
+# ------------------------------------------------------------
+# Reserve a Private IP Address (For Cloud SQL)
+# ------------------------------------------------------------
+# Create Service Attachment for Cloud SQL
+resource "google_compute_service_attachment" "sql_service_attachment" {
+  name                   = "sql-service-attachment"
+  region                 = var.region
+  connection_preference  = "ACCEPT_ANY"  # or "PREFER_ALIGNED"
+  enable_proxy_protocol  = true
+
+  target_service         = "projects/${var.project_id}/regions/${var.region}/services/sql.googleapis.com"
+
+  nat_subnets            = [google_compute_subnetwork.private_subnet.id]
+
+  depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
 }
 
 
@@ -128,6 +79,31 @@ resource "google_sql_user" "db_user" {
   instance = google_sql_database_instance.db_instance.name
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
+
+# ------------------------------------------------------------
+# GKE Cluster (Create if not already present)
+# ------------------------------------------------------------
+resource "google_container_cluster" "cluster" {
+  name                     = var.cluster_name
+  location                 = var.zone
+  deletion_protection      = false
+  remove_default_node_pool = false
+
+  initial_node_count       = 1  # Ensure at least 1 node
+
+  network    = google_compute_network.vpc_network.name
+  subnetwork = google_compute_subnetwork.private_subnet.name
+
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = true
+  }
+
+  master_authorized_networks_config {}
+
+  depends_on = [google_compute_subnetwork.private_subnet]
+}
+
 
 # ------------------------------------------------------------
 # Firewall Rule (Create if VPC exists)
