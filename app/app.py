@@ -1,10 +1,12 @@
 from flask import Flask, jsonify, request
-import psycopg2
-import os
 import logging
 import sys
 import json
 import io
+import os
+from google.cloud import secretmanager
+import psycopg2
+
 
 app = Flask(__name__)
 
@@ -15,7 +17,7 @@ class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
             "severity": record.levelname,
-            "app": "gke-rest-api",
+            "app": "my-project-app-477009",
             "version": "1.0.0",
         }
         if isinstance(record.msg, dict):
@@ -32,7 +34,7 @@ root.setLevel(logging.INFO)
 root.handlers = []
 root.addHandler(json_handler)
 
-logger = logging.getLogger("gke-rest-api")
+logger = logging.getLogger("my-project-app-477009")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
@@ -95,6 +97,22 @@ class RequestResponseLoggerMiddleware:
 
         return response_body_chunks
 
+
+
+client = secretmanager.SecretManagerServiceClient()
+
+
+def get_secret(project_id, secret_name):
+    secret_version_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    response = client.access_secret_version(name=secret_version_path)
+    secret_value = response.payload.data.decode("UTF-8")
+    return secret_value
+
+project_id = os.getenv("GCP_PROJECT_ID")  
+DB_PASS = get_secret(project_id, "db-password")  
+API-KEY = get_secret(project_id, "api-key")  # Replace with your secret name
+# Default to "default_db" if not set
+
 # Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
@@ -141,7 +159,6 @@ def readiness():
 DB_HOST = os.getenv("DB_HOST")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
-DB_PASS = os.getenv("DB_PASS")
 DB_PORT = os.getenv("DB_PORT")
 
 def get_db_connection(check_only=False):
