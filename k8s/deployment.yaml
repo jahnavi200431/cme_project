@@ -100,7 +100,7 @@ spec:
             - "--port=5432"
             - "--address=0.0.0.0"
             - "--private-ip=false"              # PUBLIC IP MODE
-            - "my-project-app-477009:us-central1:my-postgres-db"
+            - "my-project-app-477009:us-central1:products-db-instance"
           securityContext:
             runAsNonRoot: true
           ports:
