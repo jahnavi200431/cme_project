@@ -113,12 +113,15 @@ resource "google_sql_user" "db_user" {
 # ------------------------------------------------------------
 # Create Secret Manager Secret
 # ------------------------------------------------------------
+/*
 
 data "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"
- /*  replication {
+  */
+/*  replication {
     auto {}
-  } */
+  } *//*
+
 
 }
 
@@ -126,6 +129,7 @@ data "google_secret_manager_secret_version" "db_password_version" {
   secret      = data.google_secret_manager_secret.db_password.id
   secret_data = var.db_password
 }
+ */
 
 # ------------------------------------------------------------
 # Firewall Rule (Create if VPC exists)
