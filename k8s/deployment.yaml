@@ -33,79 +33,75 @@ spec:
         app: gke-rest-api
     spec:
       containers:
-        # -------------------------------
-        # 🌐 MAIN APPLICATION CONTAINER
-        # -------------------------------
-        - name: gke-rest-api
-          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
-          ports:
-            - containerPort: 8080
+      - name: gke-rest-api
+        image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+        ports:
+          - containerPort: 8080
 
-          env:
-            - name: DB_HOST
-              value: "127.0.0.1"
-            - name: DB_PORT
-              value: "5432"
-            - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
-            - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
-            - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
-            - name: API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: API_KEY
+        env:
+          - name: DB_HOST
+            value: "127.0.0.1"
+          - name: DB_PORT
+            value: "5432"
+          - name: DB_NAME
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: DB_NAME
+          - name: DB_USER
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: DB_USER
+          - name: DB_PASS
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: DB_PASS
+          - name: API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: db-credentials
+                key: API_KEY
 
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 40
-            periodSeconds: 10
-            failureThreshold: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          failureThreshold: 10
 
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 70
-            periodSeconds: 20
-            failureThreshold: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 40
+          periodSeconds: 20
+          failureThreshold: 5
 
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
 
-        # ----------------------------------------------------
-        # 🟢 CLOUD SQL PROXY SIDECAR (PUBLIC IP + PROXY MODE)
-        # ----------------------------------------------------
-        - name: cloud-sql-proxy
-          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
-          args:
-            - "--address=0.0.0.0"
-            - "--port=5432"
-            - "--private-ip=false"   # PUBLIC IP MODE
-            - "--auto-iam-authn"     # optional, but recommended
-            - "my-project-app-477009:us-central1:products-db-instance=tcp:5432"
-          securityContext:
-            runAsNonRoot: true
-          ports:
-            - containerPort: 5432
+      # -----------------------------------------
+      # 🟢 Cloud SQL Proxy (Public IP + Proxy Mode)
+      # -----------------------------------------
+      - name: cloud-sql-proxy
+        image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
+        args:
+          - "--address=127.0.0.1"
+          - "--port=5432"
+          - "--use-private-ip=false"
+          - "--auto-iam-authn"
+          - "my-project-app-477009:us-central1:products-db-instance"
+        securityContext:
+          allowPrivilegeEscalation: false
+          runAsNonRoot: true
 
 ---
 apiVersion: v1
