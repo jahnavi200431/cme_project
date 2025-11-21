@@ -141,26 +141,6 @@ resource "google_compute_firewall" "allow_internal" {
 }
 
 # ------------------------------------------------------------
-# Firewall Rule (Create if VPC exists)
-# ------------------------------------------------------------
-resource "google_compute_firewall" "allow_internal" {
-  name                   = "allow-internal-traffic"
-  network                = google_compute_network.vpc_network.name
-  direction              = "INGRESS"
-  priority               = 1000
-
-  allow {
-    protocol = "tcp"
-    ports    = ["5432"]
-  }
-
-  source_ranges = ["10.0.0.0/24"]
-  target_tags   = ["gke-node"]
-
-  depends_on = [google_compute_network.vpc_network]
-}
-
-# ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
 # ------------------------------------------------------------
 /* resource "google_container_cluster" "gke_with_sql_proxy" {
