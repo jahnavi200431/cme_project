@@ -8,11 +8,11 @@ provider "google" {
 # VPC Network (Create if it doesn't exist)
 # ------------------------------------------------------------
 data "google_compute_network" "vpc_network" {
-     name                   = "products-vpc"
+     name                   = var.vpc_name
     }
 resource "google_compute_network" "vpc_network" {
   count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
-  name                   = "products-vpc"
+  name                   = var.vpc_name
   auto_create_subnetworks = false
 }
 
@@ -22,7 +22,7 @@ resource "google_compute_network" "vpc_network" {
 
 resource "google_compute_subnetwork" "private_subnet" {
   count         = length(google_compute_network.vpc_network) > 0 ? 1 : 0
-  name          = "private-subnet"
+  name          = var.subnet_name
   region        = var.region
   network       = google_compute_network.vpc_network[0].name
   ip_cidr_range = "10.0.0.0/24"
@@ -33,13 +33,13 @@ resource "google_compute_subnetwork" "private_subnet" {
 # GKE Cluster (Create if the cluster does not exist)
 # ------------------------------------------------------------
 # Data source to check if the GKE cluster exists
-data "google_container_cluster" "gke" {
-  name     = "product-gke-cluster"
+data "google_container_cluster" "cluster" {
+  name     = var.cluster_name
   location = var.zone
 }
-resource "google_container_cluster" "gke" {
-  count                  = (length(data.google_compute_network.vpc_network.id) > 0 && length(data.google_container_cluster.gke.id) == 0) ? 1 : 0
-  name                   = "product-gke-cluster"
+resource "google_container_cluster" "cluster" {
+  count                  = (length(data.google_compute_network.vpc_network.id) > 0 && length(data.google_container_cluster.cluster.id) == 0) ? 1 : 0
+  name                   = var.cluster_name
   location               = var.zone
   deletion_protection    = false
   remove_default_node_pool = true
@@ -70,9 +70,9 @@ resource "google_container_cluster" "gke" {
 # Cloud SQL Database Instance (Create if VPC exists)
 # ------------------------------------------------------------
 
-resource "google_sql_database_instance" "postgres" {
+resource "google_sql_database_instance" "db_instance" {
   count           = length(google_compute_network.vpc_network) > 0 ? 1 : 0
-  name            = "product-db-instance"
+  name            = var.db_instance_name
   database_version = "POSTGRES_13"
   region          = var.region
 
@@ -87,15 +87,20 @@ resource "google_sql_database_instance" "postgres" {
   depends_on = [google_compute_network.vpc_network]
 }
 
+# Fetch the password from Google Cloud Secret Manager
+data "google_secret_manager_secret_version" "db_password" {
+  secret = "db-password"
+}
+
 # ------------------------------------------------------------
 # Create Database
 # ------------------------------------------------------------
 
 resource "google_sql_database" "database" {
-     count           = length(google_sql_database_instance.postgres) > 0 ? 1 : 0
+     count           = length(google_sql_database_instance.db_instance) > 0 ? 1 : 0
   name     = var.db_name
-  instance = google_sql_database_instance.postgres[0].name
-  depends_on = [google_sql_database_instance.postgres]
+  instance = google_sql_database_instance.db_instance[0].name
+  depends_on = [google_sql_database_instance.db_instance]
 }
 
 # ------------------------------------------------------------
@@ -103,33 +108,12 @@ resource "google_sql_database" "database" {
 # ------------------------------------------------------------
 
 resource "google_sql_user" "db_user" {
-       count           = length(google_sql_database_instance.postgres) > 0 ? 1 : 0
+       count           = length(google_sql_database_instance.db_instance) > 0 ? 1 : 0
   name     = var.db_user
-  instance = google_sql_database_instance.postgres[0].name
+  instance = google_sql_database_instance.db_instance[0].name
   password = data.google_secret_manager_secret_version.db_password.secret_data
-  depends_on = [google_sql_database_instance.postgres]
+  depends_on = [google_sql_database_instance.db_instance]
 }
-
-# ------------------------------------------------------------
-# Create Secret Manager Secret
-# ------------------------------------------------------------
-/*
-
-data "google_secret_manager_secret" "db_password" {
-  secret_id = "db-password"
-  */
-/*  replication {
-    auto {}
-  } *//*
-
-
-}
-
-data "google_secret_manager_secret_version" "db_password_version" {
-  secret      = data.google_secret_manager_secret.db_password.id
-  secret_data = var.db_password
-}
- */
 
 # ------------------------------------------------------------
 # Firewall Rule (Create if VPC exists)
