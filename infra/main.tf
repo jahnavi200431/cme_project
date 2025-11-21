@@ -124,11 +124,11 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 # ------------------------------------------------------------
 
 resource "google_compute_firewall" "allow_internal" {
-    count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
-  name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network[count.index].name  # Correctly reference the VPC
-  direction  = "INGRESS"
-  priority   = 1000
+  count                  = length(google_compute_network.vpc_network) > 0 ? 0 : 1  # Only create if VPC is created
+  name                   = "allow-internal-traffic"
+  network                = google_compute_network.vpc_network[0].name  # Reference the created VPC network
+  direction              = "INGRESS"
+  priority               = 1000
 
   allow {
     protocol = "tcp"
