@@ -1,3 +1,4 @@
+/*
 output "gke_endpoint" {
   value = google_container_cluster.gke.endpoint  # Direct reference without count.index
 }
@@ -5,6 +6,7 @@ output "gke_endpoint" {
 output "db_instance_name" {
   value = google_sql_database_instance.postgres.name  # Direct reference without count.index
 }
+ */
 
 output "db_user" {
   description = "The username for the PostgreSQL database"

@@ -80,13 +80,13 @@ resource "google_sql_database_instance" "postgres" {
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres.name  # Direct reference without count.index
+  instance = google_sql_database_instance.postgres[0].name  # Direct reference without count.index
 }
 
 # Create DB user
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres.name  # Direct reference without count.index
+  instance = google_sql_database_instance.postgres[0].name  # Direct reference without count.index
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
