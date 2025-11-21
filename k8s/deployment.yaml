@@ -1,42 +1,3 @@
-# -------------------------------------------------------------------
-# 1) Kubernetes ServiceAccount (for Workload Identity)
-# -------------------------------------------------------------------
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: app-workload-sa
-  namespace: default
----
-# -------------------------------------------------------------------
-# 2) SecretProviderClass (Secret Manager CSI Driver) - GCP provider
-# -------------------------------------------------------------------
-apiVersion: secrets-store.csi.x-k8s.io/v1
-kind: SecretProviderClass
-metadata:
-  name: gcp-secrets-spc
-  namespace: default
-spec:
-  provider: gcp
-  secretObjects:
-    - secretName: db-credentials
-      type: Opaque
-      data:
-        - objectName: db_password
-          key: DB_PASS
-        - objectName: api-key
-          key: API_KEY
-  parameters:
-    secrets: |
-      - resourceName: "projects/my-project-app-477009/secrets/db_password"
-        fileName: "db_password"
-        version: "latest"
-      - resourceName: "projects/my-project-app-477009/secrets/api-key"
-        fileName: "api-key"
-        version: "latest"
----
-# -------------------------------------------------------------------
-# 3) Deployment: app container + Cloud SQL Proxy sidecar
-# -------------------------------------------------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -89,14 +50,16 @@ spec:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 15
-            periodSeconds: 5
+            initialDelaySeconds: 45
+            periodSeconds: 10
+            failureThreshold: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 5
           resources:
             requests:
               cpu: "100m"
@@ -118,54 +81,7 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-          resources:
-            requests:
-              cpu: "50m"
-              memory: "64Mi"
-            limits:
-              cpu: "200m"
-              memory: "128Mi"
           volumeMounts:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
               readOnly: true
----
-# -------------------------------------------------------------------
-# 4) Service (LoadBalancer)
-# -------------------------------------------------------------------
-apiVersion: v1
-kind: Service
-metadata:
-  name: gke-rest-api-service
-  labels:
-    app: gke-rest-api
-spec:
-  type: LoadBalancer
-  selector:
-    app: gke-rest-api
-  ports:
-    - name: http
-      port: 80
-      targetPort: 8080
----
-# -------------------------------------------------------------------
-# 5) HorizontalPodAutoscaler
-# -------------------------------------------------------------------
-apiVersion: autoscaling/v2
-kind: HorizontalPodAutoscaler
-metadata:
-  name: gke-rest-api-hpa
-spec:
-  scaleTargetRef:
-    apiVersion: apps/v1
-    kind: Deployment
-    name: gke-rest-api
-  minReplicas: 2
-  maxReplicas: 5
-  metrics:
-    - type: Resource
-      resource:
-        name: cpu
-        target:
-          type: Utilization
-          averageUtilization: 50
