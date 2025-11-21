@@ -7,7 +7,9 @@ provider "google" {
 # ------------------------------------------------------------
 # VPC Network (Create if it doesn't exist)
 # ------------------------------------------------------------
-
+data "google_compute_network" "vpc_network" {
+     name                   = "products-vpc"
+    }
 resource "google_compute_network" "vpc_network" {
   count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
   name                   = "products-vpc"
