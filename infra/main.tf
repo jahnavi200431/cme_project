@@ -114,7 +114,7 @@ resource "google_sql_user" "db_user" {
 # Create Secret Manager Secret
 # ------------------------------------------------------------
 
-resource "google_secret_manager_secret" "db_password" {
+data "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"
  /*  replication {
     auto {}
