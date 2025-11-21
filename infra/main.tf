@@ -83,7 +83,7 @@ resource "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"  # The name of your secret
 
   replication {
-    automatic = true  # This specifies that the secret will be automatically replicated across all regions
+    auto {}  # This specifies that the secret will be automatically replicated across all regions
   }
 }
 
