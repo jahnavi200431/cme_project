@@ -89,23 +89,21 @@ spec:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 10
+            initialDelaySeconds: 15
+            periodSeconds: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 20
-            failureThreshold: 5
+            initialDelaySeconds: 30
+            periodSeconds: 10
           resources:
             requests:
-              cpu: "200m"
-              memory: "256Mi"
+              cpu: "100m"
+              memory: "128Mi"
             limits:
-              cpu: "500m"
-              memory: "512Mi"
+              cpu: "300m"
+              memory: "256Mi"
           volumeMounts:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
@@ -120,6 +118,13 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
           volumeMounts:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
@@ -163,4 +168,4 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 50   # <-- Adjust this as needed (50% CPU)
+          averageUtilization: 50
