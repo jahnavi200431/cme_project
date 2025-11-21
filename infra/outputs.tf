@@ -19,6 +19,3 @@ output "db_password" {
   value     = google_secret_manager_secret_version.db_password_version.secret_data
   sensitive = true  # Hide sensitive information
 }
-output "db_instance_name" {
-  value = google_sql_database_instance.postgres[count.index].name  # Use count.index
-}
