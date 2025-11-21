@@ -26,11 +26,11 @@ variable "subnet_name" {
 
 variable "cluster_name" {
   description = "The name of the subnet"
-  default     = "products-gke-cluster"
+  default     = "product-gke-cluster"
 }
 variable "db_instance_name" {
   description = "The name of the PostgreSQL database"
-  default     = "product-db-instance"
+  default     = "products-db-instance"
 }
 
 variable "db_name" {
