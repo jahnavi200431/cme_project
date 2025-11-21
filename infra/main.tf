@@ -31,6 +31,9 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
+data "google_container_cluster" "gke" {
+    name="gke"
+    }
 resource "google_container_cluster" "gke" {
   count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1  # Create if it doesn't exist
   name                   = "product-gke-cluster"
@@ -62,7 +65,6 @@ resource "google_container_cluster" "gke" {
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
-  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Create if VPC exists
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
@@ -71,20 +73,20 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[count.index].id  # Use count.index
+      private_network = google_compute_network.vpc_network.id  # Use count.index
     }
   }
 }
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
+  instance = google_sql_database_instance.postgres.name  # Use count.index
 }
 
 # Create DB user
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
+  instance = google_sql_database_instance.postgres.name  # Use count.index
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
@@ -111,9 +113,8 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 # Firewall Rules to allow GKE to access Cloud SQL privately
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  count      = google_compute_network.vpc_network.*.name != [] ? 1 : 0
   name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network[count.index].name  # Use count.index
+  network    = google_compute_network.vpc_network.name  # Use count.index
   direction  = "INGRESS"
   priority   = 1000
 
