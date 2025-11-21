@@ -76,7 +76,7 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[count.index].id  # Correctly reference network
+      private_network = google_compute_network.vpc_network[0].id  # Correctly reference network
     }
   }
 }
