@@ -101,7 +101,7 @@ spec:
             - "--port=5432"
             - "--private-ip=false"   # PUBLIC IP MODE
             - "--auto-iam-authn"     # optional, but recommended
-            - "--instance=my-project-app-477009:us-central1:products-db-instance=tcp:5432"
+            - "my-project-app-477009:us-central1:products-db-instance=tcp:5432"
           securityContext:
             runAsNonRoot: true
           ports:
