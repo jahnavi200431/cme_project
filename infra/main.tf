@@ -20,7 +20,7 @@ resource "google_compute_subnetwork" "private_subnet" {
   region                   = var.region
   network                  = google_compute_network.vpc_network.name
   ip_cidr_range            = "10.0.0.0/24"
-  private_ip_google_access = true  # Enable private Google access
+  private_ip_google_access = true  ## Enable private Google access
 }
 
 # ------------------------------------------------------------
