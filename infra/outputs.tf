@@ -15,6 +15,7 @@ output "db_user" {
 }
 
 output "db_password" {
+    description = "The password for the PostgreSQL database"
   value     = google_secret_manager_secret_version.db_password_version.secret_data
-  sensitive = true  # Hide sensitive information
+  #sensitive = true  # Hide sensitive information
 }
