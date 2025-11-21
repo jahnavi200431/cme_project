@@ -21,13 +21,12 @@ resource "google_compute_network" "vpc_network" {
 }
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
-  count          = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Ensure count is set
+  count          = google_compute_network.vpc_network.*.name != [] ? 1 : 0
   name           = "private-subnet"
   region         = var.region
-  network        = google_compute_network.vpc_network[count.index].name  # Correctly use count.index
+  network        = google_compute_network.vpc_network[count.index].name  # Use count.index
   ip_cidr_range  = "10.0.0.0/24"
 }
-
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
@@ -62,16 +61,16 @@ resource "google_container_cluster" "gke" {
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
-  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Ensure count is set
+  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
 
   settings {
-    tier = "db-f1-micro"  # Small instance size
+    tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[count.index].id  # Use count.index to reference network
+      private_network = google_compute_network.vpc_network[count.index].id  # Use count.index
     }
   }
 }
@@ -118,9 +117,9 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 # Firewall Rules to allow GKE to access Cloud SQL privately
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  count      = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Ensure count is set
+  count      = google_compute_network.vpc_network.*.name != [] ? 1 : 0
   name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network[count.index].name  # Use count.index to reference network
+  network    = google_compute_network.vpc_network[count.index].name  # Use count.index
   direction  = "INGRESS"
   priority   = 1000
 
@@ -129,10 +128,10 @@ resource "google_compute_firewall" "allow_internal" {
     ports    = ["3306"]
   }
 
-  source_ranges = ["10.0.0.0/24"]  # Allow internal network traffic within VPC
-
-  target_tags = ["gke-node"]
+  source_ranges = ["10.0.0.0/24"]
+  target_tags   = ["gke-node"]
 }
+
 
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
