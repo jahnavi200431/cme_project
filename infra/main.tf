@@ -31,7 +31,7 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
-resource "google_container_cluster" "gke" {
+data "google_container_cluster" "gke" {
     name = "product-gke-cluster"
     }
 resource "google_container_cluster" "gke" {
