@@ -7,12 +7,8 @@ provider "google" {
 # ------------------------------------------------------------
 # VPC Network (Create if it doesn't exist)
 # ------------------------------------------------------------
-data "google_compute_network" "vpc_network" {
-  name = var.vpc_name
-}
 
 resource "google_compute_network" "vpc_network" {
-  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
   name                   = var.vpc_name
   auto_create_subnetworks = false
 }
@@ -21,10 +17,9 @@ resource "google_compute_network" "vpc_network" {
 # Private Subnet in the VPC
 # ------------------------------------------------------------
 resource "google_compute_subnetwork" "private_subnet" {
-  count         = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name          = var.subnet_name
   region        = var.region
-  network       = google_compute_network.vpc_network[0].name
+  network       = google_compute_network.vpc_network.name
   ip_cidr_range = "10.0.0.0/24"
   depends_on    = [google_compute_network.vpc_network]
 }
@@ -35,7 +30,6 @@ resource "google_compute_subnetwork" "private_subnet" {
 # Data source to check if the GKE cluster exists
 
 resource "google_container_cluster" "cluster" {
-  count                  = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name                   = var.cluster_name
   location               = var.zone
   deletion_protection    = false
@@ -50,8 +44,8 @@ resource "google_container_cluster" "cluster" {
     }
   }
 
-  network    = google_compute_network.vpc_network[0].name
-  subnetwork = google_compute_subnetwork.private_subnet[0].name
+  network    = google_compute_network.vpc_network.name
+  subnetwork = google_compute_subnetwork.private_subnet.name
 
   private_cluster_config {
     enable_private_nodes    = true
@@ -75,7 +69,6 @@ resource "google_container_cluster" "cluster" {
 # Cloud SQL Database Instance (Create if VPC exists)
 # ------------------------------------------------------------
 resource "google_sql_database_instance" "db_instance" {
-  count           = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name            = var.db_instance_name
   database_version = "POSTGRES_13"
   region          = var.region
@@ -84,7 +77,7 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[0].id
+      private_network = google_compute_network.vpc_network.id
     }
   }
 
@@ -102,9 +95,8 @@ data "google_secret_manager_secret_version" "db_password" {
 # Create Database
 # ------------------------------------------------------------
 resource "google_sql_database" "database" {
-  count           = length(google_sql_database_instance.db_instance) > 0 ? 1 : 0
   name            = var.db_name
-  instance        = google_sql_database_instance.db_instance[0].name
+  instance        = google_sql_database_instance.db_instance.name
   depends_on      = [google_sql_database_instance.db_instance]
 }
 
@@ -112,9 +104,8 @@ resource "google_sql_database" "database" {
 # Create DB User
 # ------------------------------------------------------------
 resource "google_sql_user" "db_user" {
-  count           = length(google_sql_database_instance.db_instance) > 0 ? 1 : 0
   name            = var.db_user
-  instance        = google_sql_database_instance.db_instance[0].name
+  instance        = google_sql_database_instance.db_instance.name
   password        = data.google_secret_manager_secret_version.db_password.secret_data
   depends_on      = [google_sql_database_instance.db_instance]
 }
@@ -123,9 +114,8 @@ resource "google_sql_user" "db_user" {
 # Firewall Rule (Create if VPC exists)
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  count                  = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name                   = "allow-internal-traffic"
-  network                = google_compute_network.vpc_network[0].name
+  network                = google_compute_network.vpc_network.name
   direction              = "INGRESS"
   priority               = 1000
 
