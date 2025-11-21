@@ -7,15 +7,15 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
-resource "google_compute_network" "vpc" {
+resource "google_compute_network" "vpc_network" {
   name                    = var.vpc_name
   auto_create_subnetworks  = false
 }
 # Private subnet in the VPC
-resource "google_compute_subnetwork" "subnet" {
+resource "google_compute_subnetwork" "private_subnet" {
   name          = var.subnet_name
   region        = var.region
-  network       = google_compute_network.vpc.id
+  network       = google_compute_network.vpc.name
   ip_cidr_range = "10.0.0.0/24"
 }
 
@@ -60,7 +60,7 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"  # Small instance size
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc.id
+      private_network = google_compute_network.private_subnet.id
     }
   }
 }
