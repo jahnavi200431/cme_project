@@ -9,8 +9,6 @@ metadata:
 ---
 # -------------------------------------------------------------------
 # 2) SecretProviderClass (Secret Manager CSI Driver) - GCP provider
-#    This mounts secrets from Google Secret Manager and creates a
-#    Kubernetes Secret "db-credentials" containing DB_PASS and API_KEY.
 # -------------------------------------------------------------------
 apiVersion: secrets-store.csi.x-k8s.io/v1
 kind: SecretProviderClass
@@ -64,9 +62,6 @@ spec:
             volumeAttributes:
               secretProviderClass: "gcp-secrets-spc"
       containers:
-        # -------------------------------
-        # Main application container
-        # -------------------------------
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
@@ -115,9 +110,6 @@ spec:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
               readOnly: true
-        # -------------------------------
-        # Cloud SQL Proxy sidecar
-        # -------------------------------
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
@@ -171,4 +163,4 @@ spec:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 60
+          averageUtilization: 50   # <-- Adjust this as needed (50% CPU)
