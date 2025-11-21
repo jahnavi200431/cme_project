@@ -7,6 +7,9 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
+data "google_compute_network" "vpc_network" {
+    name = "products-vpc"
+    }
 
 # Check if the VPC network exists, if not, create it
 resource "google_compute_network" "vpc_network" {
