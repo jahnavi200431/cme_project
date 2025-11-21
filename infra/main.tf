@@ -72,8 +72,9 @@ resource "google_container_cluster" "cluster" {
 
   depends_on = [google_compute_subnetwork.private_subnet]
 }
+
 resource "google_container_node_pool" "node_pool" {
-  cluster   = google_container_cluster.cluster.name
+  cluster   = var.cluster_name
   location  = var.zone
   node_count = 3
 
@@ -83,6 +84,7 @@ resource "google_container_node_pool" "node_pool" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
+ depends_on = [google_container_cluster.cluster]
 }
 # ------------------------------------------------------------
 # Cloud SQL Database Instance (Create if VPC exists)
