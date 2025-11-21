@@ -42,8 +42,8 @@ resource "google_container_cluster" "gke" {
   remove_default_node_pool = true
   initial_node_count     = 1
 
-  network    = google_compute_network.vpc_network[0].name  # Reference VPC network
-  subnetwork = google_compute_subnetwork.private_subnet[0].name  # Reference private subnet
+  network    = google_compute_network.vpc_network[count.index].name  # Reference VPC network
+  subnetwork = google_compute_subnetwork.private_subnet[count.index].name  # Reference private subnet
 
   private_cluster_config {
     enable_private_nodes    = true
