@@ -144,7 +144,7 @@ resource "google_compute_firewall" "allow_internal" {
 
   allow {
     protocol = "tcp"
-    ports    = ["3306"]
+    ports    = ["3306","5432"]
   }
 
   source_ranges = ["10.0.0.0/24"]
