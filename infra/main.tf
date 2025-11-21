@@ -43,7 +43,14 @@ resource "google_container_cluster" "cluster" {
   location               = var.zone
   deletion_protection    = false
   remove_default_node_pool = true
-  initial_node_count     = 1
+    node_pool {
+      name = "default-node-pool"
+      initial_node_count = 1
+
+      node_config {
+        machine_type = "e2-micro"
+      }
+    }
 
   network    = google_compute_network.vpc_network[0].name
   subnetwork = google_compute_subnetwork.private_subnet[0].name
@@ -65,7 +72,18 @@ resource "google_container_cluster" "cluster" {
 
   depends_on = [google_compute_subnetwork.private_subnet]
 }
+resource "google_container_node_pool" "node_pool" {
+  cluster   = google_container_cluster.cluster.name
+  location  = var.zone
+  node_count = 3
 
+  node_config {
+    machine_type = "e2-micro"
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+}
 # ------------------------------------------------------------
 # Cloud SQL Database Instance (Create if VPC exists)
 # ------------------------------------------------------------
