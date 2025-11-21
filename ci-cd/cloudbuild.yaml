@@ -30,27 +30,7 @@ steps:
   
     
 
-  # ---------------------------------------------------------
-  # 1.1) Initialize Database (create table)
-  # ---------------------------------------------------------
-  - name: python:3.11
-    id: "Init Database"
-    entrypoint: bash
-    args:
-      - "-c"
-      - |
-        echo "🔧 Loading environment variables from .env..."
-        if [ -f .env ]; then
-            set -o allexport
-            source .env
-            set +o allexport
-        else
-          echo "⚠ .env file not found!"
-          exit 1
-        fi
-        cd app
-        pip install -r requirements.txt
-        INIT_DB_ONLY=true python app.py
+  #
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
   # ----------------------------------------------------------
