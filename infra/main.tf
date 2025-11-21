@@ -92,6 +92,7 @@ resource "google_sql_database_instance" "postgres" {
 # ------------------------------------------------------------
 
 resource "google_sql_database" "database" {
+     count           = length(google_sql_database_instance.postgres) > 0 ? 1 : 0
   name     = var.db_name
   instance = google_sql_database_instance.postgres[0].name
   depends_on = [google_sql_database_instance.postgres]
@@ -102,6 +103,7 @@ resource "google_sql_database" "database" {
 # ------------------------------------------------------------
 
 resource "google_sql_user" "db_user" {
+       count           = length(google_sql_database_instance.postgres) > 0 ? 1 : 0
   name     = var.db_user
   instance = google_sql_database_instance.postgres[0].name
   password = data.google_secret_manager_secret_version.db_password.secret_data
