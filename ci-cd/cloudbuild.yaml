@@ -72,8 +72,11 @@ steps:
           --zone=us-central1-a \
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
-        
-        kubectl apply -f k8s/db-secret.yaml
+        kubectl apply -f https://github.com/kubernetes-sigs/secrets-store-csi-driver/releases/latest/download/crds.yaml
+        kubectl apply -f https://github.com/kubernetes-sigs/secrets-store-csi-driver/releases/latest/download/secrets-store.csi.k8s.io_driver.yaml
+
+        kubectl apply -f k8s/secret-provider-class.yaml
+
         kubectl apply -f k8s/deployment.yaml
         
        
