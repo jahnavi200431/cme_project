@@ -26,13 +26,29 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 # Reserve a Private IP Address (For Cloud SQL)
 # ------------------------------------------------------------
-resource "google_compute_address" "private_ip_address" {
-  name         = "private-ip-address"
-  address_type = "INTERNAL"  # Set the IP to internal (private IP)
+resource "google_compute_global_address" "private_services_connection" {
+  name         = "private-services-connection"
+  address_type = "INTERNAL"  # Private IP
   subnetwork   = google_compute_subnetwork.private_subnet.name
   region       = var.region
 }
 
+resource "google_compute_network_peering" "services_peering" {
+  name         = "private-services-peering"
+  network      = google_compute_network.vpc_network.name
+  peer_network = "projects/your-project-id/global/networks/google-managed-services" # Google managed services network
+
+  auto_create_routes = true
+}
+# Private Service Connection for Cloud SQL
+resource "google_compute_service_attachment" "sql_service_attachment" {
+  name            = "sql-service-attachment"
+  region          = var.region
+  connection_id   = google_compute_global_address.private_services_connection.id
+  service         = "sql.googleapis.com"  # Cloud SQL service
+  target_service  = "projects/your-project-id/global/networks/google-managed-services"
+  network         = google_compute_network.vpc_network.name
+}
 # ------------------------------------------------------------
 # GKE Cluster (Create if not already present)
 # ------------------------------------------------------------
@@ -40,7 +56,7 @@ resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone
   deletion_protection      = false
-  remove_default_node_pool = true
+  remove_default_node_pool = false
 
   initial_node_count       = 1  # Ensure at least 1 node
 
