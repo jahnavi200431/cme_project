@@ -80,12 +80,13 @@ resource "google_sql_user" "db_user" {
 
 # Declare the secret
 resource "google_secret_manager_secret" "db_password" {
-  secret_id = "db-password"
+  secret_id = "db-password"  # The name of your secret
 
   replication {
-    automatic = true
+    automatic = true  # This specifies that the secret will be automatically replicated across all regions
   }
 }
+
 
 # Declare the secret version
 resource "google_secret_manager_secret_version" "db_password_version" {
