@@ -30,19 +30,10 @@ resource "google_compute_subnetwork" "private_subnet" {
 # Data source to check if the GKE cluster exists
 
 resource "google_container_cluster" "cluster" {
-  name                   = var.cluster_name
-  location               = var.zone
-  deletion_protection    = false
+  name                     = var.cluster_name
+  location                 = var.zone
+  deletion_protection      = false
   remove_default_node_pool = true
-
-  node_pool {
-    name               = "default-node-pool"
-    initial_node_count = 1
-
-    node_config {
-      machine_type = "e2-micro"
-    }
-  }
 
   network    = google_compute_network.vpc_network.name
   subnetwork = google_compute_subnetwork.private_subnet.name
@@ -54,16 +45,9 @@ resource "google_container_cluster" "cluster" {
 
   master_authorized_networks_config {}
 
-  node_config {
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/logging.write",
-      "https://www.googleapis.com/auth/monitoring",
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
-
   depends_on = [google_compute_subnetwork.private_subnet]
 }
+
 # Create the node pool (which Terraform manages)
 resource "google_container_node_pool" "node_pool" {
   cluster   = google_container_cluster.cluster.name
@@ -73,7 +57,9 @@ resource "google_container_node_pool" "node_pool" {
   node_config {
     machine_type = "e2-micro"
     oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
+      "https://www.googleapis.com/auth/logging.write",
+           "https://www.googleapis.com/auth/monitoring",
+           "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
 }
