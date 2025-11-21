@@ -32,6 +32,12 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 # GKE Cluster (Create if not already present)
 # ------------------------------------------------------------
+# Data source to check if the GKE cluster exists
+data "google_container_cluster" "cluster" {
+  name     = var.cluster_name
+  location = var.zone
+}
+
 resource "google_container_cluster" "cluster" {
   count                  = length(google_compute_network.vpc_network) > 0 && length(data.google_container_cluster.cluster) == 0 ? 1 : 0
   name                   = var.cluster_name
@@ -87,6 +93,13 @@ resource "google_sql_database_instance" "db_instance" {
   }
 
   depends_on = [google_compute_network.vpc_network]
+}
+
+# ------------------------------------------------------------
+# Fetch the password from Google Cloud Secret Manager
+# ------------------------------------------------------------
+data "google_secret_manager_secret_version" "db_password" {
+  secret = "db-password"  # Update with the correct secret name
 }
 
 # ------------------------------------------------------------
