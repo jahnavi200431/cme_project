@@ -8,12 +8,17 @@ provider "google" {
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
 # Only create the VPC network if it does not exist
-resource "google_compute_network" "vpc_network" {
-  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1  # Create if network doesn't exist
-  name                   = var.vpc_name
-  auto_create_subnetworks = false
+# Declare a data block to check for the existing VPC network
+data "google_compute_network" "vpc_network" {
+  name = "products-vpc"  # Replace with your actual VPC name
 }
 
+# Create the VPC network if it doesn't exist
+resource "google_compute_network" "vpc_network" {
+  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
+  name                   = "products-vpc"
+  auto_create_subnetworks = false
+}
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
   name          = "private-subnet"
