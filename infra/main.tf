@@ -28,27 +28,38 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 resource "google_compute_global_address" "private_services_connection" {
   name         = "private-services-connection"
-  address_type = "INTERNAL"  # Private IP
+  address_type = "INTERNAL"  # Ensure the IP is internal
+}
+
+resource "google_compute_address" "private_ip_address" {
+  name         = "private-services-ip"
+  address_type = "INTERNAL"
   subnetwork   = google_compute_subnetwork.private_subnet.name
   region       = var.region
 }
 
+
 resource "google_compute_network_peering" "services_peering" {
   name         = "private-services-peering"
   network      = google_compute_network.vpc_network.name
-  peer_network = "projects/your-project-id/global/networks/google-managed-services" # Google managed services network
+  peer_network = "projects/my-project-app-477009/global/networks/google-managed-services" # Correct Google service network
 
-  auto_create_routes = true
+  // Routes must be manually created; no need to specify `auto_create_routes` here.
 }
-# Private Service Connection for Cloud SQL
+
 resource "google_compute_service_attachment" "sql_service_attachment" {
-  name            = "sql-service-attachment"
-  region          = var.region
-  connection_id   = google_compute_global_address.private_services_connection.id
+  name                  = "sql-service-attachment"
+  region                = var.region
+  connection_preference = "ACCEPT_ANY"  # Specify connection preference
+  enable_proxy_protocol = true          # Enable proxy protocol
+  nat_subnets           = [google_compute_subnetwork.private_subnet.id] # Ensure you specify NAT subnets
+
   service         = "sql.googleapis.com"  # Cloud SQL service
-  target_service  = "projects/your-project-id/global/networks/google-managed-services"
-  network         = google_compute_network.vpc_network.name
+  network         = google_compute_network.vpc_network.id # Reference the network id
+  connection_id   = google_compute_address.private_ip_address.id # Private IP address for connection
 }
+
+
 # ------------------------------------------------------------
 # GKE Cluster (Create if not already present)
 # ------------------------------------------------------------
@@ -90,11 +101,9 @@ resource "google_sql_database_instance" "db_instance" {
     }
   }
 
-  depends_on = [
-    google_compute_network.vpc_network,
-    google_compute_address.private_ip_address
-  ]
+  depends_on = [google_compute_network.vpc_network, google_compute_address.private_ip_address]
 }
+
 
 # ------------------------------------------------------------
 # Fetch the password from Google Cloud Secret Manager
