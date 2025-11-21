@@ -97,10 +97,11 @@ spec:
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
-            - "--port=5432"
             - "--address=0.0.0.0"
-            - "--private-ip=false"              # PUBLIC IP MODE
-            - "my-project-app-477009:us-central1:products-db-instance"
+            - "--port=5432"
+            - "--private-ip=false"   # PUBLIC IP MODE
+            - "--auto-iam-authn"     # optional, but recommended
+            - "--instance=my-project-app-477009:us-central1:products-db-instance=tcp:5432"
           securityContext:
             runAsNonRoot: true
           ports:
