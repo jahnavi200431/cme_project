@@ -5,14 +5,6 @@ provider "google" {
 }
 
 # ------------------------------------------------------------
-# Data block to check if the VPC exists
-# ------------------------------------------------------------
-
-data "google_compute_network" "vpc_network" {
-  name = "products-vpc"
-}
-
-# ------------------------------------------------------------
 # VPC Network (Create if it doesn't exist)
 # ------------------------------------------------------------
 
@@ -27,7 +19,7 @@ resource "google_compute_network" "vpc_network" {
 # ------------------------------------------------------------
 
 resource "google_compute_subnetwork" "private_subnet" {
-  count         = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
+  count         = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name          = "private-subnet"
   region        = var.region
   network       = google_compute_network.vpc_network[0].name
@@ -77,7 +69,7 @@ resource "google_container_cluster" "gke" {
 # ------------------------------------------------------------
 
 resource "google_sql_database_instance" "postgres" {
-  count           = length(data.google_compute_network.vpc_network.id) > 0 ? 1 : 0
+  count           = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
@@ -138,7 +130,7 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 # ------------------------------------------------------------
 
 resource "google_compute_firewall" "allow_internal" {
-  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 1 : 0
+  count                  = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   name                   = "allow-internal-traffic"
   network                = google_compute_network.vpc_network[0].name
   direction              = "INGRESS"
@@ -154,8 +146,6 @@ resource "google_compute_firewall" "allow_internal" {
 
   depends_on = [google_compute_network.vpc_network]
 }
-
-
 
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
