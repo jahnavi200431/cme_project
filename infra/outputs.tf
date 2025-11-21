@@ -1,6 +1,5 @@
 output "gke_endpoint" {
-  description = "Endpoint of the GKE cluster"
-  value       = value = google_container_cluster.gke[count.index].endpoint
+  value = google_container_cluster.gke[count.index].endpoint  # Use count.index
 }
 
 # outputs.tf
