@@ -94,6 +94,7 @@ resource "google_sql_database_instance" "postgres" {
 resource "google_sql_database" "database" {
   name     = var.db_name
   instance = google_sql_database_instance.postgres[0].name
+  depends_on = [google_sql_database_instance.postgres]
 }
 
 # ------------------------------------------------------------
@@ -104,6 +105,7 @@ resource "google_sql_user" "db_user" {
   name     = var.db_user
   instance = google_sql_database_instance.postgres[0].name
   password = data.google_secret_manager_secret_version.db_password.secret_data
+  depends_on = [google_sql_database_instance.postgres]
 }
 
 # ------------------------------------------------------------
