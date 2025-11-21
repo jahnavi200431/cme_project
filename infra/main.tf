@@ -119,7 +119,7 @@ resource "google_secret_manager_secret_version" "db_password_version" {
 
 resource "google_compute_firewall" "allow_internal" {
   name       = "allow-internal-traffic"
-  network    = google_compute_network.vpc_network.name  # Direct reference without count.index
+  network    = google_compute_network.vpc_network[0].name  # Direct reference without count.index
   direction  = "INGRESS"
   priority   = 1000
 
