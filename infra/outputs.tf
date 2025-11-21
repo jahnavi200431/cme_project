@@ -8,10 +8,12 @@ output "db_instance_name" {
 }
  */
 
+/*
 output "db_user" {
   description = "The username for the PostgreSQL database"
   value       = google_sql_user.db_user.name
 }
+ */
 
 output "db_password" {
     description = "The password for the PostgreSQL database"
