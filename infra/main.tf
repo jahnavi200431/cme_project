@@ -48,7 +48,7 @@ resource "google_container_cluster" "cluster" {
   depends_on = [google_compute_subnetwork.private_subnet]
 }
 
-# Create the node pool (which Terraform manages)
+## Create the node pool (which Terraform manages)
 resource "google_container_node_pool" "node_pool" {
   cluster   = google_container_cluster.cluster.name
   location  = var.zone
