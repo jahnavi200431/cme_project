@@ -110,7 +110,7 @@ def get_secret(project_id, secret_name):
 
 project_id = os.getenv("GCP_PROJECT_ID")  
 DB_PASS = get_secret(project_id, "db-password")  
-API-KEY = get_secret(project_id, "api-key")  # Replace with your secret name
+API_KEY = get_secret(project_id, "api-key")  # Replace with your secret name
 # Default to "default_db" if not set
 
 # Attach middleware
