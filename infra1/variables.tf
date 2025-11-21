@@ -1,23 +1,40 @@
+
 variable "project_id" {
-  type = string
+  description = "The Google Cloud project ID"
+  default = "my-project-app-477009"
 }
 
 variable "region" {
-  type    = string
-  default = "us-central1"
+  description = "The region where resources will be created"
+  default     = "us-central1"
 }
 
 variable "zone" {
-  type    = string
-  default = "us-central1-a"
+  description = "The zone for resources"
+  default     = "us-central1-a"
+}
+
+variable "cluster_name" {
+  description = "The name of the subnet"
+  default     = "product-gke-cluster"
+}
+variable "db_instance_name" {
+  description = "The name of the PostgreSQL database"
+  default     = "products-db-instance"
+}
+
+variable "db_name" {
+  description = "The name of the PostgreSQL database"
+  default     = "appdb"
 }
 
 variable "db_user" {
-  type = string
+  description = "The username for the PostgreSQL database"
+  default     = "user1"
 }
 
 variable "db_password" {
-  type      = string
-  sensitive = true
+  description = "The database password"
+   default     = "test"
 }
 
