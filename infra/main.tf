@@ -5,45 +5,54 @@ provider "google" {
 }
 
 # ------------------------------------------------------------
-## VPC and Subnet Configuration
+# Data block to check if the VPC exists
 # ------------------------------------------------------------
-data "google_compute_network" "vpc_network" {
-    name = "products-vpc"
-    }
 
-# Check if the VPC network exists, if not, create it
+data "google_compute_network" "vpc_network" {
+  name = "products-vpc"
+}
+
+# ------------------------------------------------------------
+# VPC Network (Create if it doesn't exist)
+# ------------------------------------------------------------
+
 resource "google_compute_network" "vpc_network" {
   count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
   name                   = "products-vpc"
   auto_create_subnetworks = false
 }
 
-# Private subnet in the VPC
-# Private subnet in the VPC
+# ------------------------------------------------------------
+# Private Subnet in the VPC
+# ------------------------------------------------------------
+
 resource "google_compute_subnetwork" "private_subnet" {
   count         = length(data.google_compute_network.vpc_network.id) > 0 ? 0 : 1
   name          = "private-subnet"
   region        = var.region
-  network       = google_compute_network.vpc_network[0].name  # Use count.index if count is used
+  network       = google_compute_network.vpc_network[0].name
   ip_cidr_range = "10.0.0.0/24"
+  depends_on    = [google_compute_network.vpc_network]
 }
 
 # ------------------------------------------------------------
-# GKE Cluster (with private access to Cloud SQL)
+# GKE Cluster (Create if the cluster does not exist)
 # ------------------------------------------------------------
+
 data "google_container_cluster" "gke" {
-    name = "product-gke-cluster"
-    }
+  name = "product-gke-cluster"
+}
+
 resource "google_container_cluster" "gke" {
-  count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1  # Create if it doesn't exist
+  count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1
   name                   = "product-gke-cluster"
   location               = var.zone
   deletion_protection    = false
   remove_default_node_pool = true
   initial_node_count     = 1
 
-  network    = google_compute_network.vpc_network[count.index].name  # Reference VPC network
-  subnetwork = google_compute_subnetwork.private_subnet[count.index].name  # Reference private subnet
+  network    = google_compute_network.vpc_network[0].name
+  subnetwork = google_compute_subnetwork.private_subnet[0].name
 
   private_cluster_config {
     enable_private_nodes    = true
@@ -59,15 +68,16 @@ resource "google_container_cluster" "gke" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
+
+  depends_on = [google_compute_subnetwork.private_subnet]
 }
 
-
 # ------------------------------------------------------------
-# Cloud SQL Instance with Private IP
+# Cloud SQL Database Instance (Create if VPC exists)
 # ------------------------------------------------------------
 
 resource "google_sql_database_instance" "postgres" {
-  count           = length(data.google_compute_network.vpc_network.id) > 0 ? 1 : 0  # Create if VPC exists
+  count           = length(data.google_compute_network.vpc_network.id) > 0 ? 1 : 0
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
@@ -76,25 +86,31 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network[0].id  # Correctly reference network
+      private_network = google_compute_network.vpc_network[0].id
     }
   }
+
+  depends_on = [google_compute_network.vpc_network]
 }
 
+# ------------------------------------------------------------
+# Create Database
+# ------------------------------------------------------------
 
-# Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres[0].name  # Correctly reference the created instance
+  instance = google_sql_database_instance.postgres[0].name
 }
 
-# Create DB user
+# ------------------------------------------------------------
+# Create DB User
+# ------------------------------------------------------------
+
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres[0].name  # Correctly reference the created instance
+  instance = google_sql_database_instance.postgres[0].name
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
-
 
 # ------------------------------------------------------------
 # Create Secret Manager Secret
@@ -102,14 +118,13 @@ resource "google_sql_user" "db_user" {
 
 resource "google_secret_manager_secret" "db_password" {
   secret_id = "db-password"
-
   replication {
-    auto {}  # Automatically replicate across regions
+    auto {}
   }
 
   lifecycle {
-    prevent_destroy = true  # Prevents destruction of the secret
-    ignore_changes   = [secret_id]  # Avoid changes to the secret_id if it already exists
+    prevent_destroy = true
+    ignore_changes   = [secret_id]
   }
 }
 
@@ -118,15 +133,14 @@ resource "google_secret_manager_secret_version" "db_password_version" {
   secret_data = var.db_password
 }
 
-
 # ------------------------------------------------------------
-# Firewall Rules to allow GKE to access Cloud SQL privately
+# Firewall Rule (Create if VPC exists)
 # ------------------------------------------------------------
 
 resource "google_compute_firewall" "allow_internal" {
-  count                  = length(google_compute_network.vpc_network) > 0 ? 0 : 1  # Only create if VPC is created
+  count                  = length(data.google_compute_network.vpc_network.id) > 0 ? 1 : 0
   name                   = "allow-internal-traffic"
-  network                = google_compute_network.vpc_network[0].name  # Reference the created VPC network
+  network                = google_compute_network.vpc_network[0].name
   direction              = "INGRESS"
   priority               = 1000
 
@@ -137,7 +151,10 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
+
+  depends_on = [google_compute_network.vpc_network]
 }
+
 
 
 # ------------------------------------------------------------
