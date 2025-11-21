@@ -1,27 +1,17 @@
-provider "google" {
-  project = var.project_id
-  region  = var.region
-  zone    = var.zone
-}
-
-# ------------------------------------------------------------
-# VPC Network (Create if it doesn't exist)
-# ------------------------------------------------------------
+# Create the VPC Network
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
   auto_create_subnetworks = false
 }
 
-# ------------------------------------------------------------
-# Private Subnet in the VPC
-# ------------------------------------------------------------
+# Create the Private Subnet
 resource "google_compute_subnetwork" "private_subnet" {
-  name                     = var.subnet_name
-  region                   = var.region
-  network                  = google_compute_network.vpc_network.name
-  ip_cidr_range            = "10.0.0.0/24"
-  private_ip_google_access = true  # Enable private Google access
+  name          = var.subnet_name
+  region        = var.region
+  network       = google_compute_network.vpc_network.name
+  ip_cidr_range = "10.0.0.0/24"
 }
+
 # Create the Cloud SQL Database Instance
 resource "google_sql_database_instance" "db_instance" {
   name            = var.db_instance_name
@@ -38,9 +28,15 @@ resource "google_sql_database_instance" "db_instance" {
 
   depends_on = [google_compute_network.vpc_network]
 }
-# ------------------------------------------------------------
-# Reserve a Private IP Address (For Cloud SQL)
-# ------------------------------------------------------------
+
+
+# Create Global IP for Private IP
+resource "google_compute_global_address" "private_ip_address" {
+  name   = "private-ip-address"
+  region = var.region
+  purpose = "VPC_PEERING"  # Specify VPC peering for the service attachment
+}
+
 # Create Service Attachment for Cloud SQL
 resource "google_compute_service_attachment" "sql_service_attachment" {
   name                   = "sql-service-attachment"
@@ -48,9 +44,10 @@ resource "google_compute_service_attachment" "sql_service_attachment" {
   connection_preference  = "ACCEPT_ANY"  # or "PREFER_ALIGNED"
   enable_proxy_protocol  = true
 
-  target_service         = "projects/${var.project_id}/regions/${var.region}/services/sql.googleapis.com"
+  target_service         = "projects/${var.project_id}/global/services/sql.googleapis.com"
 
   nat_subnets            = [google_compute_subnetwork.private_subnet.id]
+  connection_id          = google_compute_global_address.private_ip_address.id
 
   depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
 }
@@ -80,15 +77,13 @@ resource "google_sql_user" "db_user" {
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
-# ------------------------------------------------------------
-# GKE Cluster (Create if not already present)
-# ------------------------------------------------------------
+
+# Create the Kubernetes Cluster
 resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone
   deletion_protection      = false
   remove_default_node_pool = false
-
   initial_node_count       = 1  # Ensure at least 1 node
 
   network    = google_compute_network.vpc_network.name
