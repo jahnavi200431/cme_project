@@ -78,6 +78,20 @@ resource "google_sql_user" "db_user" {
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
+# Declare the secret
+resource "google_secret_manager_secret" "db_password" {
+  secret_id = "db-password"
+
+  replication {
+    automatic = true
+  }
+}
+
+# Declare the secret version
+resource "google_secret_manager_secret_version" "db_password_version" {
+  secret      = google_secret_manager_secret.db_password.id
+  secret_data = var.db_password  # You should set this variable in terraform.tfvars or at runtime
+}
 # ------------------------------------------------------------
 # Firewall Rules to allow GKE to access Cloud SQL privately
 # ------------------------------------------------------------

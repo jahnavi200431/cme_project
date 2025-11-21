@@ -16,5 +16,5 @@ output "db_user" {
 
 output "db_password" {
   value     = google_secret_manager_secret_version.db_password_version.secret_data
-  sensitive = true  # This ensures the output is not printed in the terminal
+  sensitive = true  # Hide sensitive information
 }
