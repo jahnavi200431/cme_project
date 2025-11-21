@@ -7,45 +7,17 @@ provider "google" {
 # ------------------------------------------------------------
 ## VPC and Subnet Configuration
 # ------------------------------------------------------------
-resource "google_compute_network" "vpc_network" {
-  name                    = "product-vpc"
+resource "google_compute_network" "vpc" {
+  name                    = var.vpc_name
   auto_create_subnetworks  = false
 }
-
 # Private subnet in the VPC
-resource "google_compute_subnetwork" "private_subnet" {
-  name                     = "private-subnet"
-  region                   = var.region
-  network                  = google_compute_network.vpc_network.name
-  ip_cidr_range            = "10.0.0.0/24"  # Adjust the CIDR range as per your requirements
-  private_ip_google_access = true  # Enable Private Google Access
+resource "google_compute_subnetwork" "subnet" {
+  name          = var.subnet_name
+  region        = var.region
+  network       = google_compute_network.vpc.id
+  ip_cidr_range = "10.0.0.0/24"
 }
-
-# ------------------------------------------------------------
-# IAM Permissions for the Service Account
-# ------------------------------------------------------------
-
-/* locals {
-  node_sa = "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"
-} */
-
-/* resource "google_project_iam_member" "logwriter" {
-  project = var.project_id
-  role    = "roles/logging.logWriter"
-  member  = "serviceAccount:${local.node_sa}"
-}
-
-resource "google_project_iam_member" "metricwriter" {
-  project = var.project_id
-  role    = "roles/monitoring.metricWriter"
-  member  = "serviceAccount:${local.node_sa}"
-}
-
-resource "google_project_iam_member" "cloudsql_client" {
-  project = var.project_id
-  role    = "roles/cloudsql.client"
-  member  = "serviceAccount:${local.node_sa}"
-} */
 
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
@@ -79,40 +51,32 @@ resource "google_container_cluster" "gke" {
 # ------------------------------------------------------------
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
-/* resource "google_sql_database_instance" "postgres" {
+resource "google_sql_database_instance" "postgres" {
   name             = "product-db-instance"
-  database_version = "POSTGRES_15"
+  database_version = "POSTGRES_13"
   region           = var.region
 
   settings {
-    tier = "db-f1-micro"
-
+    tier = "db-f1-micro"  # Small instance size
     ip_configuration {
-      ipv4_enabled    = false  # Disable public IP for Cloud SQL
-      private_network = google_compute_network.vpc_network.self_link  # Link to VPC network
+      ipv4_enabled    = false
+      private_network = google_compute_network.vpc.id
     }
-
-    # Move deletion_protection inside the settings block
-    deletion_protection = true  # Correct location for this argument
   }
-} */
-
-
-
+}
 # Create DB
-/* resource "google_sql_database" "db" {
-  name     = "productdb"
-  instance = google_sql_database_instance.postgres.name
-} */
-
-# Create DB user
-/*
-resource "google_sql_user" "root" {
-  name     = var.db_user
-  password = var.db_password
+resource "google_sql_database" "database" {
+  name     = var.db_name
   instance = google_sql_database_instance.postgres.name
 }
- */
+
+# Create DB user
+
+resource "google_sql_user" "db_user" {
+  name     = var.db_user
+  instance = google_sql_database_instance.postgres.name
+  password = data.google_secret_manager_secret_version.db_password.secret_data
+}
 
 # ------------------------------------------------------------
 # Firewall Rules to allow GKE to access Cloud SQL privately

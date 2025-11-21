@@ -44,7 +44,7 @@ spec:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 30   # Give time to connect to DB
+            initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 10
 
@@ -64,37 +64,38 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
+          volumeMounts:
+            - name: secret-volume
+              mountPath: /mnt/secrets
+              readOnly: true
+
           env:
             - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
+              value: "<YOUR_DB_HOST>"
             - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
+              value: "appdb"
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
+              value: "user1"
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PASS
             - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
+              value: "5432"
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: API_KEY
+
+      volumes:
+        - name: secret-volume
+          csi:
+            driver: secrets-store.csi.k8s.io
+            volumeAttributes:
+              secretProviderClass: gcp-secret-provider
+
 
 ---
 
@@ -132,3 +133,5 @@ spec:
         target:
           type: Utilization
           averageUtilization: 60
+
+
