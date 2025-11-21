@@ -34,6 +34,7 @@ resource "google_compute_subnetwork" "private_subnet" {
 # ------------------------------------------------------------
 
 resource "google_container_cluster" "gke" {
+    count                  = length(google_compute_network.vpc_network) > 0 ? 1 : 0
   count                  = length(google_container_cluster.gke) > 0 ? 0 : 1
   name                   = "product-gke-cluster"
   location               = var.zone
