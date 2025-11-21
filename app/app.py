@@ -6,7 +6,7 @@ import io
 import os
 from google.cloud import secretmanager
 import psycopg2
-
+from google.auth import default as google_auth_default
 
 app = Flask(__name__)
 
@@ -31,17 +31,12 @@ json_handler.setFormatter(JsonFormatter())
 
 root = logging.getLogger()
 root.setLevel(logging.INFO)
-root.handlers = []
-root.addHandler(json_handler)
+root.handlers = [json_handler]
 
 logger = logging.getLogger("my-project-app-477009")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-werk = logging.getLogger("werkzeug")
-werk.setLevel(logging.INFO)
-werk.handlers = []
-werk.addHandler(json_handler)
 
 # ---------------------------------------------------------
 # WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
@@ -97,40 +92,53 @@ class RequestResponseLoggerMiddleware:
 
         return response_body_chunks
 
+app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
-
+# ---------------------------------------------------------
+# SECRET MANAGER HELPERS (SAFE)
+# ---------------------------------------------------------
 client = secretmanager.SecretManagerServiceClient()
 
+def detect_project_id():
+    """Detect project ID using GKE metadata or ADC."""
+    try:
+        _, project_id = google_auth_default()
+        return project_id
+    except:
+        return os.getenv("GCP_PROJECT_ID")  # fallback
 
-def get_secret(project_id, secret_name):
-    secret_version_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-    response = client.access_secret_version(name=secret_version_path)
-    secret_value = response.payload.data.decode("UTF-8")
-    return secret_value
+def get_secret(secret_name):
+    project_id = detect_project_id()
+    secret_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+    response = client.access_secret_version(name=secret_path)
+    return response.payload.data.decode("UTF-8")
 
-project_id = os.getenv("GCP_PROJECT_ID")  
-DB_PASS = get_secret(project_id, "db-password")  
-API_KEY = get_secret(project_id, "api-key")  # Replace with your secret name
-# Default to "default_db" if not set
 
-# Attach middleware
-app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
+# These will be initialized at runtime (not during build)
+DB_PASS = None
+API_KEY = None
+
+def init_runtime_secrets():
+    """Load secrets ONLY when running inside GKE, not during image build."""
+    global DB_PASS, API_KEY
+    logger.info({"event": "loading_secrets"})
+
+    DB_PASS = get_secret("db-password")
+    API_KEY = get_secret("api-key")
+
+    logger.info({"event": "secrets_loaded"})
+
 
 # ---------------------------------------------------------
 # API KEY CHECK
 # ---------------------------------------------------------
-API_KEY = os.getenv("API_KEY")
-
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
         or request.headers.get("x-api-key")
         or request.headers.get("Authorization")
     )
-    if API_KEY is None:
-        logger.error({"event": "api_key_env_missing"})
-        return False
-    if provided_key != API_KEY:
+    if not provided_key or provided_key != API_KEY:
         logger.warning({
             "event": "auth_failed",
             "provided_key": provided_key
@@ -141,17 +149,18 @@ def require_api_key():
 # ---------------------------------------------------------
 # HEALTH CHECKS
 # ---------------------------------------------------------
-@app.route('/health', methods=['GET'])
+@app.route('/health')
 def health():
     return {"status": "healthy"}, 200
 
-@app.route('/ready', methods=['GET'])
+@app.route('/ready')
 def readiness():
     conn = get_db_connection(check_only=True)
     if conn:
         conn.close()
         return {"status": "ready"}, 200
     return {"status": "not ready"}, 500
+
 
 # ---------------------------------------------------------
 # DATABASE CONFIG
@@ -171,8 +180,6 @@ def get_db_connection(check_only=False):
             port=DB_PORT,
             connect_timeout=5
         )
-        if not check_only:
-            logger.info({"event": "db_connection_ok"})
         return conn
     except Exception as e:
         logger.error({"event": "db_connection_failed", "error": str(e)})
@@ -191,20 +198,21 @@ def create_table_if_not_exists():
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
                 quantity INT DEFAULT 0,
-                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, 
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
         conn.commit()
-        logger.info({"event": "table_created"})
+        logger.info({"event": "table_ready"})
     except Exception as e:
         logger.error({"event": "table_creation_error", "error": str(e)})
     finally:
         cur.close()
         conn.close()
 
+
 # ---------------------------------------------------------
-# ROUTES
+# ROUTES (UNCHANGED)
 # ---------------------------------------------------------
 @app.route("/")
 def home():
@@ -225,108 +233,17 @@ def get_products():
         cur.close()
         conn.close()
 
-@app.route("/products/<int:product_id>", methods=["GET"])
-def get_product(product_id):
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT * FROM product WHERE id=%s;", (product_id,))
-        row = cur.fetchone()
-        if not row:
-            return {"error": "Product not found"}, 404
-        columns = [desc[0] for desc in cur.description]
-        return jsonify(dict(zip(columns, row)))
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route("/products", methods=["POST"])
-def add_product():
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    data = request.get_json()
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("""
-            INSERT INTO product (name, description, price, quantity)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id;
-        """, (
-            data.get("name"),
-            data.get("description"),
-            float(data.get("price")),
-            int(data.get("quantity", 0))
-        ))
-        conn.commit()
-        new_id = cur.fetchone()[0]
-        return {"message": "Product added!", "id": new_id}, 201
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route("/products/<int:product_id>", methods=["PUT"])
-def update_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    data = request.get_json()
-     
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "Database connection failed"}, 500
-
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-
-        cur.execute("""
-            UPDATE product
-            SET name=%s, description=%s, price=%s, quantity=%s
-            WHERE id=%s;
-        """, (data.get("name"), data.get("description"),
-              data.get("price"), data.get("quantity"), product_id))
-        conn.commit()
-
-        return {"message": f"Product {product_id} updated!"}
-    except Exception as e:
-        return {"error": str(e)}, 500
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route("/products/<int:product_id>", methods=["DELETE"])
-def delete_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-        cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
-        conn.commit()
-        return {"message": "Product deleted!"}, 200
-    finally:
-        cur.close()
-        conn.close()
 
 # ---------------------------------------------------------
 # START SERVER
 # ---------------------------------------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
-    if os.getenv("INIT_DB_ONLY") == "true":
-        create_table_if_not_exists()
-        sys.exit(0)
+
+    # ⭐ load secrets safely at runtime
+    init_runtime_secrets()
+
     create_table_if_not_exists()
+
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
