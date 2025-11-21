@@ -5,12 +5,12 @@ serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-com
 
 substitutions:
   _TAG: $SHORT_SHA
-  _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
+  _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/my-project-app-477009"
 
 steps:
   
   # ------------------------------------------------------
-  # 1) Install Terraform
+  ## 1) Install Terraform
   # -------------------------------------------------------
   - name: hashicorp/terraform:1.6.6
     entrypoint: "sh"
@@ -18,7 +18,7 @@ steps:
     args:
       - "-c"
       - |
-        cd infra1
+        cd infra
         echo "🔧 Initializing Terraform..."
         terraform init -input=false
 
@@ -61,6 +61,8 @@ steps:
         "build",
         "-t",
         "${_IMAGE}:${_TAG}",
+        "-f",
+        "app/Dockerfile",
         "."
       ]
 
@@ -93,18 +95,17 @@ steps:
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
         
-        kubectl apply -f k8s/db-secret.yaml
         kubectl apply -f k8s/deployment.yaml
         
        
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
-        kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
+        kubectl set image deployment/my-project-app-477009 my-project-app-477009=${_IMAGE}:${_TAG}
 
         echo "⏳ Waiting for rollout..."
-        kubectl rollout status deployment/gke-rest-api --timeout=120s || (
+        kubectl rollout status deployment/my-project-app-477009 --timeout=120s || (
           echo "❌ Rollout failed"
-          kubectl describe deployment gke-rest-api
+          kubectl describe deployment my-project-app-477009
           kubectl get pods -o wide
           exit 1
         )
@@ -133,16 +134,16 @@ steps:
         while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
           echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
           sleep 10
-          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          LB_IP=$$(kubectl get svc my-project-app-477009-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
           RETRY=$$((RETRY+1))
         done
 
         if [ -z "$$LB_IP" ]; then
           echo " LoadBalancer IP not found. Diagnosing..."
-          kubectl get svc gke-rest-api-service -o yaml || true
-          kubectl describe svc gke-rest-api-service || true
-          kubectl get pods -l app=gke-rest-api -o wide || true
-          kubectl describe deployment gke-rest-api || true
+          kubectl get svc my-project-app-477009-service -o yaml || true
+          kubectl describe svc my-project-app-477009-service || true
+          kubectl get pods -l app=my-project-app-477009 -o wide || true
+          kubectl describe deployment my-project-app-477009 || true
           kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
@@ -162,9 +163,9 @@ steps:
 
         if [ "$$http_status" != "200" ]; then
           echo " /products endpoint failing."
-          kubectl get pods -l app=gke-rest-api -o wide || true
-          kubectl describe deployment gke-rest-api || true
-          kubectl describe svc gke-rest-api-service || true
+          kubectl get pods -l app=my-project-app-477009 -o wide || true
+          kubectl describe deployment my-project-app-477009 || true
+          kubectl describe svc my-project-app-477009-service || true
           kubectl get events --sort-by=.metadata.creationTimestamp | tail -n 50 || true
           exit 1
         fi
