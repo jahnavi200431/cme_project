@@ -33,12 +33,8 @@ resource "google_compute_subnetwork" "private_subnet" {
 # GKE Cluster (Create if the cluster does not exist)
 # ------------------------------------------------------------
 
-data "google_container_cluster" "gke" {
-  name = "product-gke-cluster"
-}
-
 resource "google_container_cluster" "gke" {
-  count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1
+  count                  = length(google_container_cluster.gke) > 0 ? 0 : 1
   name                   = "product-gke-cluster"
   location               = var.zone
   deletion_protection    = false
