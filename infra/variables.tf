@@ -37,7 +37,6 @@ variable "db_user" {
 
 variable "db_password" {
   description = "The database password"
-  type        = string
    default     = "test"
 }
 
