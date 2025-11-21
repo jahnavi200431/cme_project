@@ -97,15 +97,24 @@ resource "google_sql_database_instance" "postgres" {
   }
 }
 
-# Create DB
-resource "google_sql_database" "db" {
-  name     = "productdb"
-  instance = google_sql_database_instance.postgres.name
+resource "google_sql_database" "database" {
+  name     = var.db_name
+  instance = google_sql_database_instance.db_instance.name
 }
 
-# Create DB user
-resource "google_sql_user" "root" {
-  name     = var.db_user
-  password = var.db_password
-  instance = google_sql_database_instance.postgres.name
+# ------------------------------------------------------------
+# Fetch DB password from Secret Manager
+# ------------------------------------------------------------
+data "google_secret_manager_secret_version" "db_password" {
+  secret = "db-password"
 }
+
+# ------------------------------------------------------------
+# Create DB user
+# ------------------------------------------------------------
+resource "google_sql_user" "db_user" {
+  name     = var.db_user
+  instance = google_sql_database_instance.db_instance.name
+  password = data.google_secret_manager_secret_version.db_password.secret_data
+}
+
