@@ -1,12 +1,12 @@
 output "gke_endpoint" {
   description = "Endpoint of the GKE cluster"
-  value       = google_container_cluster.gke.endpoint
+  value       = value = google_container_cluster.gke[count.index].endpoint
 }
 
 # outputs.tf
 output "db_instance_name" {
-  description = "The name of the PostgreSQL Cloud SQL instance"
-  value       = google_sql_database_instance.postgres.name
+    description = "The name of the PostgreSQL Cloud SQL instance"
+  value = google_sql_database_instance.postgres[count.index].name  # Use count.index
 }
 
 output "db_user" {

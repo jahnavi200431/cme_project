@@ -65,6 +65,7 @@ resource "google_container_cluster" "gke" {
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
+  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Create if VPC exists
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
@@ -73,20 +74,20 @@ resource "google_sql_database_instance" "postgres" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network.id  # Use count.index
+      private_network = google_compute_network.vpc_network[count.index].id  # Use count.index
     }
   }
 }
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres.name  # Use count.index
+  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
 }
 
 # Create DB user
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres.name  # Use count.index
+  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
