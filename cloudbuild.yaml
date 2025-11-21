@@ -61,6 +61,8 @@ steps:
         "build",
         "-t",
         "${_IMAGE}:${_TAG}",
+        "-f",
+        "app/Dockerfile",
         "."
       ]
 
