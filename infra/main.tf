@@ -5,66 +5,131 @@ provider "google" {
 }
 
 # ------------------------------------------------------------
-# VPC Network (Create if it doesn't exist)
+# VPC Network
 # ------------------------------------------------------------
 resource "google_compute_network" "vpc_network" {
-  name                   = var.vpc_name
+  name                    = var.vpc_name
   auto_create_subnetworks = false
 }
 
 # ------------------------------------------------------------
-# Private Subnet in the VPC
+# Private Subnet
 # ------------------------------------------------------------
 resource "google_compute_subnetwork" "private_subnet" {
   name                     = var.subnet_name
   region                   = var.region
   network                  = google_compute_network.vpc_network.name
   ip_cidr_range            = "10.0.0.0/24"
-  private_ip_google_access = true  # Enable private Google access
+  private_ip_google_access = true
 }
-# Create the Cloud SQL Database Instance
+
+# ------------------------------------------------------------
+# Allocate IP range for Private Services Access (for Cloud SQL)
+# ------------------------------------------------------------
+resource "google_compute_global_address" "private_services_ip" {
+  name          = "private-services-ip"
+  purpose       = "VPC_PEERING"
+  address_type  = "INTERNAL"
+  prefix_length = 16
+  network       = google_compute_network.vpc_network.name
+}
+
+# ------------------------------------------------------------
+# Setup Private Services Connection
+# ------------------------------------------------------------
+resource "google_service_networking_connection" "private_vpc_connection" {
+  network                 = google_compute_network.vpc_network.id
+  service                 = "servicenetworking.googleapis.com"
+  reserved_peering_ranges = [google_compute_global_address.private_services_ip.name]
+}
+
+# ------------------------------------------------------------
+# GKE Cluster
+# ------------------------------------------------------------
+resource "google_container_cluster" "cluster" {
+  name                     = var.cluster_name
+  location                 = var.zone
+  remove_default_node_pool = true
+  initial_node_count       = 1
+  network                  = google_compute_network.vpc_network.name
+  subnetwork               = google_compute_subnetwork.private_subnet.name
+
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = true
+  }
+
+  master_authorized_networks_config {}
+}
+
+# ------------------------------------------------------------
+# Node Pool for App + Cloud SQL Proxy
+# ------------------------------------------------------------
+resource "google_container_node_pool" "app_node_pool" {
+  name       = "app-node-pool"
+  cluster    = google_container_cluster.cluster.name
+  location   = var.zone
+  node_count = 2
+
+  node_config {
+    machine_type = "e2-medium"
+    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    tags         = ["gke-node"]
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  depends_on = [google_container_cluster.cluster]
+}
+
+# ------------------------------------------------------------
+# Node Pool for Cloud Build private workers
+# ------------------------------------------------------------
+resource "google_container_node_pool" "cloudbuild_node_pool" {
+  name       = "cloudbuild-node-pool"
+  cluster    = google_container_cluster.cluster.name
+  location   = var.zone
+  node_count = 1
+
+  node_config {
+    machine_type = "e2-medium"
+    oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+    tags         = ["cloudbuild-node"]
+  }
+
+  management {
+    auto_repair  = true
+    auto_upgrade = true
+  }
+
+  depends_on = [google_container_cluster.cluster]
+}
+
+# ------------------------------------------------------------
+# Cloud SQL PostgreSQL Instance (Private IP only)
+# ------------------------------------------------------------
 resource "google_sql_database_instance" "db_instance" {
-  name            = var.db_instance_name
+  name             = var.db_instance_name
   database_version = "POSTGRES_13"
-  region          = var.region
+  region           = var.region
 
   settings {
     tier = "db-f1-micro"
+
     ip_configuration {
       ipv4_enabled    = false
       private_network = google_compute_network.vpc_network.id
     }
   }
 
-  depends_on = [google_compute_network.vpc_network]
-}
-# ------------------------------------------------------------
-# Reserve a Private IP Address (For Cloud SQL)
-# ------------------------------------------------------------
-# Create Service Attachment for Cloud SQL
-resource "google_compute_service_attachment" "sql_service_attachment" {
-  name                   = "sql-service-attachment"
-  region                 = var.region
-  connection_preference  = "ACCEPT_ANY"  # or "PREFER_ALIGNED"
-  enable_proxy_protocol  = true
-
-  target_service         = "projects/${var.project_id}/regions/${var.region}/services/sql.googleapis.com"
-
-  nat_subnets            = [google_compute_subnetwork.private_subnet.id]
-
-  depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
-}
-
-
-# ------------------------------------------------------------
-# Fetch the password from Google Cloud Secret Manager
-# ------------------------------------------------------------
-data "google_secret_manager_secret_version" "db_password" {
-  secret = "db-password"
+  depends_on = [google_service_networking_connection.private_vpc_connection]
 }
 
 # ------------------------------------------------------------
-# Create Database
+# Database creation
 # ------------------------------------------------------------
 resource "google_sql_database" "database" {
   name     = var.db_name
@@ -72,7 +137,14 @@ resource "google_sql_database" "database" {
 }
 
 # ------------------------------------------------------------
-# Create DB User
+# Fetch DB password from Secret Manager
+# ------------------------------------------------------------
+data "google_secret_manager_secret_version" "db_password" {
+  secret = "db-password"
+}
+
+# ------------------------------------------------------------
+# Create DB user
 # ------------------------------------------------------------
 resource "google_sql_user" "db_user" {
   name     = var.db_user
@@ -81,38 +153,13 @@ resource "google_sql_user" "db_user" {
 }
 
 # ------------------------------------------------------------
-# GKE Cluster (Create if not already present)
-# ------------------------------------------------------------
-resource "google_container_cluster" "cluster" {
-  name                     = var.cluster_name
-  location                 = var.zone
-  deletion_protection      = false
-  remove_default_node_pool = false
-
-  initial_node_count       = 1  # Ensure at least 1 node
-
-  network    = google_compute_network.vpc_network.name
-  subnetwork = google_compute_subnetwork.private_subnet.name
-
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = true
-  }
-
-  master_authorized_networks_config {}
-
-  depends_on = [google_compute_subnetwork.private_subnet]
-}
-
-
-# ------------------------------------------------------------
-# Firewall Rule (Create if VPC exists)
+# Firewall to allow internal traffic to Cloud SQL
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  name                   = "allow-internal-traffic"
-  network                = google_compute_network.vpc_network.name
-  direction              = "INGRESS"
-  priority               = 1000
+  name    = "allow-internal-traffic"
+  network = google_compute_network.vpc_network.name
+  direction = "INGRESS"
+  priority  = 1000
 
   allow {
     protocol = "tcp"
@@ -121,36 +168,4 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
-
-  depends_on = [google_compute_network.vpc_network]
 }
-
-# ------------------------------------------------------------
-# Cloud SQL Proxy Setup (for secure access)
-# ------------------------------------------------------------
-/* resource "google_container_cluster" "gke_with_sql_proxy" {
-  name                     = "product-gke-cluster"
-  location                 = var.zone
-  network                  = google_compute_network.vpc_network.name
-  subnetwork               = google_compute_subnetwork.private_subnet.name
-  initial_node_count       = 1
-
-  private_cluster_config {
-    enable_private_nodes    = true   # Enable private nodes
-    enable_private_endpoint = true   # Enable private endpoint for the master
-  }
-
-  # Configure master authorized networks
-  master_authorized_networks_config {
-    cidr_blocks {
-      cidr_block = "0.0.0.0/0"  # Allow all networks (use more restrictive ranges if needed)
-      display_name = "Allow All"
-    }
-  }
-
-  node_config {
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
-} */
