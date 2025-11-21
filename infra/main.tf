@@ -120,10 +120,6 @@ data "google_secret_manager_secret" "db_password" {
     auto {}
   }
 
-  lifecycle {
-    prevent_destroy = true
-    ignore_changes   = [secret_id]
-  }
 }
 
 data "google_secret_manager_secret_version" "db_password_version" {
