@@ -64,7 +64,19 @@ resource "google_container_cluster" "cluster" {
 
   depends_on = [google_compute_subnetwork.private_subnet]
 }
+# Create the node pool (which Terraform manages)
+resource "google_container_node_pool" "node_pool" {
+  cluster   = google_container_cluster.cluster.name
+  location  = var.zone
+  node_count = 3
 
+  node_config {
+    machine_type = "e2-micro"
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform"
+    ]
+  }
+}
 # ------------------------------------------------------------
 # Cloud SQL Database Instance (Create if VPC exists)
 # ------------------------------------------------------------
