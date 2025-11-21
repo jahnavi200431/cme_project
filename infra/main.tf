@@ -10,8 +10,9 @@ provider "google" {
 # Only create the VPC network if it does not exist
 # Declare a data block to check for the existing VPC network
 data "google_compute_network" "vpc_network" {
-  name = "products-vpc"  # Replace with your actual VPC name
+  name = "products-vpc"
 }
+
 
 # Create the VPC network if it doesn't exist
 resource "google_compute_network" "vpc_network" {
@@ -21,25 +22,25 @@ resource "google_compute_network" "vpc_network" {
 }
 # Private subnet in the VPC
 resource "google_compute_subnetwork" "private_subnet" {
-  count          = google_compute_network.vpc_network.*.name != [] ? 1 : 0
-  name           = "private-subnet"
-  region         = var.region
-  network        = google_compute_network.vpc_network[count.index].name  # Use count.index
-  ip_cidr_range  = "10.0.0.0/24"
+  count         = google_compute_network.vpc_network.*.name != [] ? 1 : 0
+  name          = "private-subnet"
+  region        = var.region
+  network       = google_compute_network.vpc_network[count.index].name  # Use count.index
+  ip_cidr_range = "10.0.0.0/24"
 }
 # ------------------------------------------------------------
 # GKE Cluster (with private access to Cloud SQL)
 # ------------------------------------------------------------
 resource "google_container_cluster" "gke" {
-    count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1
-  name                     = "product-gke-cluster"
-  location                 = var.zone
-  deletion_protection      = false   # Set to false to allow deletion
+  count                  = length(data.google_container_cluster.gke.id) > 0 ? 0 : 1  # Create if it doesn't exist
+  name                   = "product-gke-cluster"
+  location               = var.zone
+  deletion_protection    = false
   remove_default_node_pool = true
-  initial_node_count       = 1
+  initial_node_count     = 1
 
-  network    = google_compute_network.vpc_network.name
-  subnetwork = google_compute_subnetwork.private_subnet.name
+  network    = google_compute_network.vpc_network[count.index].name  # Use count.index
+  subnetwork = google_compute_subnetwork.private_subnet[count.index].name  # Use count.index
 
   private_cluster_config {
     enable_private_nodes    = true
@@ -61,7 +62,7 @@ resource "google_container_cluster" "gke" {
 # Cloud SQL Instance with Private IP
 # ------------------------------------------------------------
 resource "google_sql_database_instance" "postgres" {
-  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0
+  count           = google_compute_network.vpc_network.*.name != [] ? 1 : 0  # Create if VPC exists
   name            = "product-db-instance"
   database_version = "POSTGRES_13"
   region          = var.region
@@ -77,21 +78,14 @@ resource "google_sql_database_instance" "postgres" {
 # Create DB
 resource "google_sql_database" "database" {
   name     = var.db_name
-  instance = google_sql_database_instance.postgres.name
-   lifecycle {
-      ignore_changes = [name]  # Ignore changes to the cluster name
-    }
+  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
 }
 
 # Create DB user
-
 resource "google_sql_user" "db_user" {
   name     = var.db_user
-  instance = google_sql_database_instance.postgres.name
+  instance = google_sql_database_instance.postgres[count.index].name  # Use count.index
   password = data.google_secret_manager_secret_version.db_password.secret_data
-   lifecycle {
-      ignore_changes = [name]  # Ignore changes to the cluster name
-    }
 }
 
 
