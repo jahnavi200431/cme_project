@@ -97,7 +97,6 @@ class RequestResponseLoggerMiddleware:
 
         return response_body_chunks
 
-# Attach middleware
 app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
 
 # ---------------------------------------------------------
@@ -110,9 +109,13 @@ def get_secret(project_id, secret_name):
     response = client.access_secret_version(name=secret_version_path)
     return response.payload.data.decode("UTF-8")
 
-project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
-DB_PASS = get_secret(project_id, "db-password")
-API_KEY = get_secret(project_id, "api-key")
+try:
+    project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
+    DB_PASS = get_secret(project_id, "db-password")
+    API_KEY = get_secret(project_id, "api-key")
+except Exception as e:
+    logger.error({"event": "secret_manager_error", "error": str(e)}, exc_info=True)
+    sys.exit(1)
 
 # ---------------------------------------------------------
 # DATABASE CONFIG
@@ -136,7 +139,7 @@ def get_db_connection(check_only=False):
             logger.info({"event": "db_connection_ok"})
         return conn
     except Exception as e:
-        logger.error({"event": "db_connection_failed", "error": str(e)})
+        logger.error({"event": "db_connection_failed", "error": str(e)}, exc_info=True)
         return None
 
 # ---------------------------------------------------------
@@ -145,10 +148,10 @@ def get_db_connection(check_only=False):
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
+        logger.error({"event": "db_not_available_table_creation"})
         return
     try:
         cur = conn.cursor()
-        # Create table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 id SERIAL PRIMARY KEY,
@@ -162,7 +165,6 @@ def create_table_if_not_exists():
         """)
         conn.commit()
 
-        # Insert 2 initial products if table is empty
         cur.execute("SELECT COUNT(*) FROM product;")
         count = cur.fetchone()[0]
         if count == 0:
@@ -177,7 +179,7 @@ def create_table_if_not_exists():
         
         logger.info({"event": "table_created_or_exists"})
     except Exception as e:
-        logger.error({"event": "table_creation_error", "error": str(e)})
+        logger.error({"event": "table_creation_error", "error": str(e)}, exc_info=True)
     finally:
         cur.close()
         conn.close()
