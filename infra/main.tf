@@ -3,6 +3,7 @@ provider "google" {
   region  = var.region_name
 }
 
+/*
 # Create the VPC Network
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
@@ -14,11 +15,37 @@ resource "google_compute_subnetwork" "private_subnet" {
   region                    = var.region_name
   network                   = google_compute_network.vpc_network.id
   ip_cidr_range             = "10.10.0.0/24"
-  private_ip_google_access = true
+  private_ip_google_access  = true  # Enable Private Google Access
+}
+ */
+
+# Reserve a global IP address for Private Services Access
+resource "google_compute_global_address" "private_services_ip" {
+  name    = "private-services-ip"
+  purpose = "VPC_PEERING"
+  project = var.project_id
 }
 
+# Create the Private Services Connection for Cloud SQL
+resource "google_compute_service_attachment" "private_services_connection" {
+  name            = "private-services-connection"
+  region          = var.region_name
+  project         = var.project_id
+  target_service  = "services/servicenetworking.googleapis.com"  # Private service network for Cloud SQL
 
-# Create the Cloud SQL Database Instance
+  # Connection preference - typically, you would use 'PREFERRED' for Cloud SQL
+  connection_preference = "PREFERRED"
+
+  # NAT subnets that will be used for Private Google Access
+  nat_subnets = [
+    google_compute_subnetwork.private_subnet.id
+  ]
+
+  # Enable Proxy Protocol (typically set to false unless needed for specific use cases)
+  enable_proxy_protocol = false
+}
+
+# Create the Cloud SQL Database Instance with Private IP
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -28,9 +55,11 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network.self_link
+      private_network = google_compute_network.vpc_network.self_link  # Private network for Cloud SQL
     }
   }
+
+  depends_on = [google_compute_service_attachment.private_services_connection]
 }
 
 # Fetch the password from Google Cloud Secret Manager
@@ -51,6 +80,7 @@ resource "google_sql_user" "db_user" {
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
+/*
 # Create the Kubernetes Cluster
 resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
@@ -61,15 +91,18 @@ resource "google_container_cluster" "cluster" {
   network                  = google_compute_network.vpc_network.name
   subnetwork               = google_compute_subnetwork.private_subnet.name
 
-   private_cluster_config {
-     enable_private_nodes = true
-     enable_private_endpoint = false
-   }
-}
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = false  # Private endpoint is set to false
+  }
 
-## Firewall Rule (Create if VPC exists)
+  depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
+}
+ */
+
+# Firewall Rule to allow access to Cloud SQL via private IP
 resource "google_compute_firewall" "allow_internal" {
-  name       = var.frewall_name
+  name       = var.firewall_name
   network    = google_compute_network.vpc_network.name
   direction  = "INGRESS"
   priority   = 1000
@@ -78,10 +111,9 @@ resource "google_compute_firewall" "allow_internal" {
     ports    = ["5432"]
   }
 
-  source_ranges = ["10.0.0.0/24"]
+  source_ranges = ["10.10.0.0/24"]  # Allow only from your internal network
   target_tags   = ["gke-node"]
 }
-
 
 
 
