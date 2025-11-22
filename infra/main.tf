@@ -67,7 +67,6 @@ resource "google_container_cluster" "cluster" {
    }
   # Enable Cloud SQL Integration
   enable_ip_aliases = true
-  }
 }
 
 # Firewall Rule (Create if VPC exists)
