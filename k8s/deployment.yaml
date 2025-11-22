@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
         - name: my-project-app-477009
-          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/my-project-app-477009:latest
+          image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
           ports:
             - containerPort: 8080
 
