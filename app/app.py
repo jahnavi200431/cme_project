@@ -123,11 +123,10 @@ def require_api_key():
 # ---------------------------------------------------------
 # DATABASE CONFIG (IAM via Cloud SQL Proxy)
 # ---------------------------------------------------------
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1")  # Cloud SQL Proxy localhost
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_NAME = os.getenv("DB_NAME", "appdb")
 DB_USER = os.getenv("DB_USER", "user1")
 DB_PORT = int(os.getenv("DB_PORT", 5432))
-
 
 def get_db_connection(check_only=False):
     try:
@@ -144,7 +143,6 @@ def get_db_connection(check_only=False):
     except Exception as e:
         logger.error({"event": "db_connection_failed", "error": str(e)})
         return None
-
 
 def create_table_if_not_exists():
     conn = get_db_connection()
@@ -171,6 +169,21 @@ def create_table_if_not_exists():
     finally:
         cur.close()
         conn.close()
+
+# ---------------------------------------------------------
+# HEALTHCHECK ENDPOINTS
+# ---------------------------------------------------------
+@app.route("/ready")
+def readiness():
+    conn = get_db_connection(check_only=True)
+    if conn:
+        conn.close()
+        return {"status": "ready"}, 200
+    return {"status": "not ready"}, 503
+
+@app.route("/health")
+def liveness():
+    return {"status": "alive"}, 200
 
 # ---------------------------------------------------------
 # ROUTES
