@@ -6,13 +6,12 @@ import io
 import os
 from google.cloud import secretmanager
 import psycopg2
-import sys
 
 app = Flask(__name__)
 
-# ------------------------------------------------------
-# JSON LOGGING (CLOUD LOGGING FRIENDLY)
-# ------------------------------------------------------
+# --------------------------
+# JSON LOGGING (CLOUD-FRIENDLY)
+# --------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -38,88 +37,32 @@ logger = logging.getLogger("my-project-app-477009")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-werk = logging.getLogger("werkzeug")
-werk.setLevel(logging.INFO)
-werk.handlers = []
-werk.addHandler(json_handler)
-
-# ---------------------------------------------------------
-# WSGI MIDDLEWARE — FULL REQUEST + FULL RESPONSE LOGGING
-# ---------------------------------------------------------
-class RequestResponseLoggerMiddleware:
-    def __init__(self, app):
-        self.app = app
-
-    def __call__(self, environ, start_response):
-        try:
-            raw_body = environ["wsgi.input"].read()
-            body_text = raw_body.decode("utf-8")
-            environ["wsgi.input"] = io.BytesIO(raw_body)
-        except:
-            body_text = "<unable to read>"
-
-        logger.info({
-            "event": "request",
-            "method": environ.get("REQUEST_METHOD"),
-            "path": environ.get("PATH_INFO"),
-            "query": environ.get("QUERY_STRING"),
-            "remote_ip": environ.get("REMOTE_ADDR"),
-            "body": body_text[:5000]
-        })
-
-        response_body_chunks = []
-
-        def custom_start_response(status, headers, exc_info=None):
-            nonlocal response_body_chunks
-            def write(body):
-                response_body_chunks.append(body)
-                return start_response(status, headers, exc_info)
-            start_response(status, headers, exc_info)
-            return write
-
-        result = self.app(environ, custom_start_response)
-
-        for chunk in result:
-            response_body_chunks.append(chunk)
-
-        full_response_body = b"".join(response_body_chunks)
-        try:
-            response_text = full_response_body.decode("utf-8")
-        except:
-            response_text = "<binary response>"
-
-        logger.info({
-            "event": "response",
-            "status": "200",
-            "path": environ.get("PATH_INFO"),
-            "response_body": response_text[:5000]
-        })
-
-        return response_body_chunks
-
-app.wsgi_app = RequestResponseLoggerMiddleware(app.wsgi_app)
-
-# ---------------------------------------------------------
+# --------------------------
 # SECRET MANAGER
-# ---------------------------------------------------------
+# --------------------------
 client = secretmanager.SecretManagerServiceClient()
 
 def get_secret(project_id, secret_name):
-    secret_version_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-    response = client.access_secret_version(name=secret_version_path)
-    return response.payload.data.decode("UTF-8")
+    try:
+        secret_version_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
+        response = client.access_secret_version(name=secret_version_path)
+        return response.payload.data.decode("UTF-8")
+    except Exception as e:
+        logger.error({"event": "secret_manager_error", "secret": secret_name, "error": str(e)}, exc_info=True)
+        return None
 
-try:
-    project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
-    DB_PASS = get_secret(project_id, "db-password")
-    API_KEY = get_secret(project_id, "api-key")
-except Exception as e:
-    logger.error({"event": "secret_manager_error", "error": str(e)}, exc_info=True)
+# Load secrets
+project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
+DB_PASS = get_secret(project_id, "db-password")
+API_KEY = get_secret(project_id, "api-key")
+
+if not DB_PASS or not API_KEY:
+    logger.error({"event": "missing_secrets"})
     sys.exit(1)
 
-# ---------------------------------------------------------
+# --------------------------
 # DATABASE CONFIG
-# ---------------------------------------------------------
+# --------------------------
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_NAME = os.getenv("DB_NAME", "appdb")
 DB_USER = os.getenv("DB_USER", "user1")
@@ -142,9 +85,9 @@ def get_db_connection(check_only=False):
         logger.error({"event": "db_connection_failed", "error": str(e)}, exc_info=True)
         return None
 
-# ---------------------------------------------------------
-# TABLE CREATION + INITIAL PRODUCTS
-# ---------------------------------------------------------
+# --------------------------
+# TABLE CREATION
+# --------------------------
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
@@ -176,7 +119,6 @@ def create_table_if_not_exists():
             """)
             conn.commit()
             logger.info({"event": "initial_products_inserted"})
-        
         logger.info({"event": "table_created_or_exists"})
     except Exception as e:
         logger.error({"event": "table_creation_error", "error": str(e)}, exc_info=True)
@@ -184,9 +126,9 @@ def create_table_if_not_exists():
         cur.close()
         conn.close()
 
-# ---------------------------------------------------------
+# --------------------------
 # API KEY CHECK
-# ---------------------------------------------------------
+# --------------------------
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
@@ -201,9 +143,9 @@ def require_api_key():
         return False
     return True
 
-# ---------------------------------------------------------
-# HEALTHCHECK ENDPOINTS
-# ---------------------------------------------------------
+# --------------------------
+# HEALTHCHECK
+# --------------------------
 @app.route('/health', methods=['GET'])
 def health():
     return {"status": "healthy"}, 200
@@ -216,34 +158,38 @@ def readiness():
         return {"status": "ready"}, 200
     return {"status": "not ready"}, 500
 
-# ---------------------------------------------------------
+# --------------------------
 # ROUTES
-# ---------------------------------------------------------
+# --------------------------
 @app.route("/")
 def home():
     return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
 
 @app.route("/products", methods=["GET"])
 def get_products():
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
     try:
+        conn = get_db_connection()
+        if not conn:
+            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("SELECT * FROM product;")
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         return jsonify([dict(zip(columns, row)) for row in rows])
+    except Exception as e:
+        logger.exception("Error fetching products")
+        return {"error": str(e)}, 500
     finally:
-        cur.close()
-        conn.close()
+        if conn:
+            cur.close()
+            conn.close()
 
 @app.route("/products/<int:product_id>", methods=["GET"])
 def get_product(product_id):
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
     try:
+        conn = get_db_connection()
+        if not conn:
+            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("SELECT * FROM product WHERE id=%s;", (product_id,))
         row = cur.fetchone()
@@ -251,19 +197,23 @@ def get_product(product_id):
             return {"error": "Product not found"}, 404
         columns = [desc[0] for desc in cur.description]
         return jsonify(dict(zip(columns, row)))
+    except Exception as e:
+        logger.exception("Error fetching product")
+        return {"error": str(e)}, 500
     finally:
-        cur.close()
-        conn.close()
+        if conn:
+            cur.close()
+            conn.close()
 
 @app.route("/products", methods=["POST"])
 def add_product():
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
-    data = request.get_json()
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
     try:
+        data = request.get_json()
+        conn = get_db_connection()
+        if not conn:
+            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO product (name, description, price, quantity)
@@ -278,62 +228,19 @@ def add_product():
         conn.commit()
         new_id = cur.fetchone()[0]
         return {"message": "Product added!", "id": new_id}, 201
+    except Exception as e:
+        logger.exception("Error adding product")
+        return {"error": str(e)}, 500
     finally:
-        cur.close()
-        conn.close()
+        if conn:
+            cur.close()
+            conn.close()
 
-@app.route("/products/<int:product_id>", methods=["PUT"])
-def update_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    data = request.get_json()
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "Database connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-        cur.execute("""
-            UPDATE product
-            SET name=%s, description=%s, price=%s, quantity=%s, updated_at=NOW()
-            WHERE id=%s;
-        """, (data.get("name"), data.get("description"),
-              data.get("price"), data.get("quantity"), product_id))
-        conn.commit()
-        return {"message": f"Product {product_id} updated!"}
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route("/products/<int:product_id>", methods=["DELETE"])
-def delete_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-        cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
-        conn.commit()
-        return {"message": "Product deleted!"}, 200
-    finally:
-        cur.close()
-        conn.close()
-
-# ---------------------------------------------------------
+# --------------------------
 # START SERVER
-# ---------------------------------------------------------
+# --------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
-    if os.getenv("INIT_DB_ONLY") == "true":
-        create_table_if_not_exists()
-        sys.exit(0)
     create_table_if_not_exists()
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
