@@ -64,11 +64,6 @@ spec:
               cpu: "500m"
               memory: "512Mi"
 
-          volumeMounts:
-            - name: secret-volume
-              mountPath: /mnt/secrets
-              readOnly: true
-
           env:
             - name: DB_HOST
               value: localhost
@@ -76,25 +71,7 @@ spec:
               value: "appdb"
             - name: DB_USER
               value: "user1"
-            - name: DB_PASS
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PASS
-            - name: DB_PORT
-              value: "5432"
-            - name: API_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: API_KEY
 
-      volumes:
-        - name: secret-volume
-          csi:
-            driver: secrets-store.csi.k8s.io
-            volumeAttributes:
-              secretProviderClass: gcp-secret-provider
 
 
 ---
