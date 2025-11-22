@@ -57,12 +57,14 @@ spec:
             # Instance connection name (positional argument)
             - "my-project-app-477009:us-central1:products-db-instance1"
 
-            # Proxy settings
+            # Listener configuration
             - "--address=127.0.0.1"
             - "--port=5432"
+
+            # IAM Authentication
             - "--auto-iam-authn"
 
-            # Use Cloud SQL's private IP (no value allowed)
+            # Connect through the instance's PRIVATE IP
             - "--private-ip"
 
           securityContext:
