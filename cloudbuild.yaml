@@ -26,7 +26,7 @@ steps:
         terraform plan -out=tfplan -input=false
 
         echo "🚀 Applying Terraform..."
-        terraform apply -input=false -auto-approve tfplan
+     #   terraform apply -input=false -auto-approve tfplan
   
     
 
@@ -90,7 +90,7 @@ steps:
       - |
         echo "🚀 Starting deployment to GKE..."
 
-        gcloud container clusters get-credentials product-gke-cluster \
+        gcloud container clusters get-credentials products-gke-cluster1 \
           --zone=us-central1-a \
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
