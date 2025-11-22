@@ -1,19 +1,20 @@
-# Use Python 3.11
-FROM python:3.11
+FROM python:3.11-slim
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy requirements from app folder
-COPY app/requirements.txt .
-
-# Install dependencies
+# Copy requirements
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
-COPY app/ .
+# Copy app code
+COPY app.py .
+COPY start.sh .
+
+# Make start.sh executable
+RUN chmod +x start.sh
 
 # Expose port
 EXPOSE 8080
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
+# Set default command to start.sh
+CMD ["/bin/bash", "/app/start.sh"]
