@@ -1,28 +1,3 @@
----
-apiVersion: secrets-store.csi.x-k8s.io/v1
-kind: SecretProviderClass
-metadata:
-  name: gcp-secrets-spc
-  namespace: default
-spec:
-  provider: gcp
-  secretObjects:
-    - secretName: db-credentials
-      type: Opaque
-      data:
-        - objectName: db_password
-          key: DB_PASS
-        - objectName: api-key
-          key: API_KEY
-  parameters:
-    secrets: |
-      - resourceName: "projects/my-project-app-477009/secrets/db_password"
-        fileName: "db_password"
-        version: "latest"
-      - resourceName: "projects/my-project-app-477009/secrets/api-key"
-        fileName: "api-key"
-        version: "latest"
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -106,3 +81,7 @@ spec:
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
+          volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
