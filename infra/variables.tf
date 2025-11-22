@@ -6,7 +6,7 @@ variable "project_id" {
 
 variable "region" {
   description = "The region where resources will be created"
-  default     = "us-central1"
+  default     = "us-central"
 }
 
 variable "zone" {
@@ -16,21 +16,21 @@ variable "zone" {
 
 variable "vpc_name" {
   description = "The name of the VPC"
-  default     = "products-vpc1"
+  default     = "products-vpc"
 }
 
 variable "subnet_name" {
   description = "The name of the subnet"
-  default     = "products-subnet1"
+  default     = "products-subnet"
 }
 
 variable "cluster_name" {
   description = "The name of the subnet"
-  default     = "products-gke-cluster1"
+  default     = "product-gke-cluster"
 }
 variable "db_instance_name" {
   description = "The name of the PostgreSQL database"
-  default     = "products-db-instance1"
+  default     = "products-db-instance"
 }
 
 variable "db_name" {
