@@ -54,7 +54,7 @@ def get_secret(project_id, secret_name):
 # Load secrets
 project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
 DB_PASS = get_secret(project_id, "db-password")
-API_KEY = get_secret(project_id, "api-key")
+API_KEY ="restapi123"
 
 if not DB_PASS or not API_KEY:
     logger.error({"event": "missing_secrets"})
@@ -74,7 +74,7 @@ def get_db_connection(check_only=False):
             host=DB_HOST,
             database=DB_NAME,
             user=DB_USER,
-            password=DB_PASS,
+            password="postgres",
             port=DB_PORT,
             connect_timeout=5
         )
