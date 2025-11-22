@@ -8,7 +8,7 @@ import os
 app = Flask(__name__)
 
 # --------------------------
-# JSON LOGGING (CLOUD-FRIENDLY)
+# JSON Logging (Cloud-friendly)
 # --------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
@@ -36,17 +36,17 @@ logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
 # --------------------------
-# CONFIG
+# DB and API key (direct)
 # --------------------------
-DB_HOST = "127.0.0.1"
-DB_NAME = "appdb"
-DB_USER = "user1"
-DB_PASS = "postgres"      # direct password
-DB_PORT = 5432            # direct port
-API_KEY = "restapi123"
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")  # connect via Cloud SQL Proxy
+DB_PORT = int(os.getenv("DB_PORT", 5432))
+DB_NAME = os.getenv("DB_NAME", "appdb")
+DB_USER = os.getenv("DB_USER", "user1")
+DB_PASS = os.getenv("DB_PASS", "postgres")  # direct password
+API_KEY = os.getenv("API_KEY", "restapi123")  # direct API key
 
 # --------------------------
-# DATABASE CONNECTION
+# Database Connection
 # --------------------------
 def get_db_connection(check_only=False):
     try:
@@ -66,7 +66,7 @@ def get_db_connection(check_only=False):
         return None
 
 # --------------------------
-# TABLE CREATION
+# Table creation
 # --------------------------
 def create_table_if_not_exists():
     conn = get_db_connection()
@@ -82,12 +82,13 @@ def create_table_if_not_exists():
                 description TEXT,
                 price NUMERIC(10,2) NOT NULL,
                 quantity INT DEFAULT 0,
-                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, 
+                created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
             );
         """)
         conn.commit()
 
+        # Insert initial products if empty
         cur.execute("SELECT COUNT(*) FROM product;")
         count = cur.fetchone()[0]
         if count == 0:
@@ -107,7 +108,7 @@ def create_table_if_not_exists():
         conn.close()
 
 # --------------------------
-# API KEY CHECK
+# API Key Check
 # --------------------------
 def require_api_key():
     provided_key = (
@@ -115,19 +116,22 @@ def require_api_key():
         or request.headers.get("x-api-key")
         or request.headers.get("Authorization")
     )
+    if API_KEY is None:
+        logger.error({"event": "api_key_missing"})
+        return False
     if provided_key != API_KEY:
         logger.warning({"event": "auth_failed", "provided_key": provided_key})
         return False
     return True
 
 # --------------------------
-# HEALTHCHECK
+# Health & Readiness
 # --------------------------
-@app.route('/health', methods=['GET'])
+@app.route('/health')
 def health():
     return {"status": "healthy"}, 200
 
-@app.route('/ready', methods=['GET'])
+@app.route('/ready')
 def readiness():
     conn = get_db_connection(check_only=True)
     if conn:
@@ -136,11 +140,11 @@ def readiness():
     return {"status": "not ready"}, 500
 
 # --------------------------
-# ROUTES
+# Routes
 # --------------------------
 @app.route("/")
 def home():
-    return {"message": "Welcome to Product API"}, 200
+    return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
 
 @app.route("/products", methods=["GET"])
 def get_products():
@@ -186,14 +190,8 @@ def add_product():
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO product (name, description, price, quantity)
-            VALUES (%s, %s, %s, %s)
-            RETURNING id;
-        """, (
-            data.get("name"),
-            data.get("description"),
-            float(data.get("price")),
-            int(data.get("quantity", 0))
-        ))
+            VALUES (%s, %s, %s, %s) RETURNING id;
+        """, (data.get("name"), data.get("description"), float(data.get("price")), int(data.get("quantity", 0))))
         conn.commit()
         new_id = cur.fetchone()[0]
         return {"message": "Product added!", "id": new_id}, 201
@@ -201,52 +199,8 @@ def add_product():
         cur.close()
         conn.close()
 
-@app.route("/products/<int:product_id>", methods=["PUT"])
-def update_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    data = request.get_json()
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-        cur.execute("""
-            UPDATE product
-            SET name=%s, description=%s, price=%s, quantity=%s, updated_at=NOW()
-            WHERE id=%s;
-        """, (data.get("name"), data.get("description"),
-              float(data.get("price")), int(data.get("quantity")), product_id))
-        conn.commit()
-        return {"message": f"Product {product_id} updated!"}
-    finally:
-        cur.close()
-        conn.close()
-
-@app.route("/products/<int:product_id>", methods=["DELETE"])
-def delete_product(product_id):
-    if not require_api_key():
-        return {"error": "Unauthorized"}, 401
-    conn = get_db_connection()
-    if not conn:
-        return {"error": "DB connection failed"}, 500
-    try:
-        cur = conn.cursor()
-        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
-        if not cur.fetchone():
-            return {"error": "Product not found"}, 404
-        cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
-        conn.commit()
-        return {"message": "Product deleted!"}, 200
-    finally:
-        cur.close()
-        conn.close()
-
 # --------------------------
-# START SERVER
+# Main
 # --------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
