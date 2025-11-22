@@ -38,7 +38,7 @@ resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
   network      = google_compute_network.vpc_network.id
   peer_network = "projects/${var.project_id}/global/networks/default"  # Peer to Google's default network for SQL
-  auto_create_routes = true
+  #auto_create_routes = true
 }
 
 # Fetch the password from Google Cloud Secret Manager
