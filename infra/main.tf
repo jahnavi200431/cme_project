@@ -63,9 +63,11 @@ resource "google_compute_subnetwork" "private_subnet" {
 } */
 # Create the Cloud SQL Database Instance with Private IP
 # Reserve a global IP address for Private Services Access
+
+# Reserve a global IP address for Private Services Access
 resource "google_compute_global_address" "private_services_ip" {
   name    = "private-services-ip"
-  purpose = "GCE_ENDPOINT"  # Purpose for Private Services Access
+  purpose = "VPC_PEERING"  # Correct purpose for Private Services Access
   project = var.project_id
 }
 
@@ -74,7 +76,7 @@ resource "google_compute_service_attachment" "private_services_connection" {
   name               = "private-services-connection"
   region             = var.region_name
   project            = var.project_id
-  target_service     = "services/servicenetworking.googleapis.com"  # Private service network for Cloud SQL
+  target_service     = "services/servicenetworking.googleapis.com"  # Correct service endpoint for Cloud SQL
 
   # Connection preference - 'PREFERRED' for Cloud SQL
   connection_preference = "PREFERRED"
