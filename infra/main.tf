@@ -7,7 +7,7 @@ provider "google" {
 data "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
 }
-resource "google_compute_subnetwork" "private_subnet" {
+data "google_compute_subnetwork" "private_subnet" {
      name                      = var.subnet_name
     }
 /*
