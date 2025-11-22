@@ -1,13 +1,15 @@
-# Use Python 3.11 slim for smaller image
+# Use Python 3.11 slim
 FROM python:3.11-slim
 
-# Set working directory inside container
 WORKDIR /app
 
-# Copy requirements from app folder
+# Copy requirements
 COPY app/requirements.txt .
 
-# Install dependencies, including psycopg2 build dependencies
+# Upgrade pip first
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# Install system dependencies for psycopg2
 RUN apt-get update && apt-get install -y \
     gcc \
     libpq-dev \
@@ -16,11 +18,9 @@ RUN apt-get update && apt-get install -y \
     && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy the rest of the application code
+# Copy application code
 COPY app/ .
 
-# Expose port for GKE
 EXPOSE 8080
 
-# Run the Flask app using Gunicorn
 CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--access-logfile", "-", "--error-logfile", "-", "app:app"]
