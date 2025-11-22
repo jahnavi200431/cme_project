@@ -11,7 +11,7 @@ data "google_compute_subnetwork" "private_subnet" {
      name                      = var.subnet_name
     }
 resource "google_compute_global_address" "private_ip_range" {
-  name          = "private-ip-range"
+  name          = "private-ip-range1"
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 16
