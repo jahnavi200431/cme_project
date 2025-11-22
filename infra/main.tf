@@ -33,9 +33,9 @@ resource "google_sql_database_instance" "db_instance" {
 # Create Global IP for Private IP
 resource "google_compute_global_address" "private_ip_address" {
   name   = "private-ip-address"
-  region = var.region
   purpose = "VPC_PEERING"  # Specify VPC peering for the service attachment
 }
+
 
 # Create Service Attachment for Cloud SQL
 resource "google_compute_service_attachment" "sql_service_attachment" {
@@ -47,10 +47,10 @@ resource "google_compute_service_attachment" "sql_service_attachment" {
   target_service         = "projects/${var.project_id}/global/services/sql.googleapis.com"
 
   nat_subnets            = [google_compute_subnetwork.private_subnet.id]
-  connection_id          = google_compute_global_address.private_ip_address.id
 
   depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
 }
+
 
 
 # ------------------------------------------------------------
