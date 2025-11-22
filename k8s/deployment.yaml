@@ -64,7 +64,7 @@ spec:
             # IAM Authentication
             - "--auto-iam-authn"
 
-            # Connect through the instance's PRIVATE IP
+            # Connect through the instance's PRIVATE I
             
 
           securityContext:
