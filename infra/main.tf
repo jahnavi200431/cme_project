@@ -7,18 +7,19 @@ resource "google_compute_network" "vpc_network" {
 
 # Create the Private Subnet
 resource "google_compute_subnetwork" "private_subnet" {
-  name          = var.subnet_name
-  #region        = var.region
-  network       = google_compute_network.vpc_network.name
-  ip_cidr_range = "10.0.0.0/24"
-   project = var.project_id
+  name                      = var.subnet_name
+  region                    = var.region
+  network                   = google_compute_network.vpc_network.name
+  ip_cidr_range             = "10.0.0.0/24"
+  private_ip_google_access  = true  # Enable Private Google Access
+  project                   = var.project_id
 }
 
 # Create the Cloud SQL Database Instance
 resource "google_sql_database_instance" "db_instance" {
-  name            = var.db_instance_name
+  name             = var.db_instance_name
   database_version = "POSTGRES_13"
-  region          = var.region
+  region           = var.region
 
   settings {
     tier = "db-f1-micro"
@@ -27,41 +28,37 @@ resource "google_sql_database_instance" "db_instance" {
       private_network = google_compute_network.vpc_network.id
     }
   }
-   project = var.project_id
+
+  project    = var.project_id
   depends_on = [google_compute_network.vpc_network]
 }
-
 
 # Create Global IP for Private IP
 resource "google_compute_global_address" "private_ip_address" {
   name    = "private-ip-address"
-  purpose = "INTERNAL"  # Use INTERNAL for private IP addresses
+  purpose = "INTERNAL"  # Use INTERNAL for private IPs
   network = google_compute_network.vpc_network.id
-   project = var.project_id
+  project = var.project_id
 }
 
 # Ensure private services connection (for Cloud SQL private IP)
 resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
-  network      = "projects/${var.project_id}/global/networks/${google_compute_network.vpc_network.name}"  # Full network path
-  peer_network = "projects/${var.project_id}/global/networks/default"  # Ensure this points to the correct network, typically "default"
-
-  // You can add other configurations if necessary, but remove `auto_create_routes`
+  network      = "projects/${var.project_id}/global/networks/${google_compute_network.vpc_network.name}"
+  peer_network = "projects/${var.project_id}/global/networks/default"
+  project      = var.project_id
 }
-
 
 # Create Service Attachment for Cloud SQL
 resource "google_compute_service_attachment" "sql_service_attachment" {
-  name                   = "sql-service-attachment"
-  region                 = var.region
-  connection_preference  = "ACCEPT_ANY"  # or "PREFER_ALIGNED"
-  enable_proxy_protocol  = true
-
-  target_service         = "projects/${var.project_id}/global/services/sql.googleapis.com"
-
-  nat_subnets            = [google_compute_subnetwork.private_subnet.id]
-  project = var.project_id
-  depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
+  name                  = "sql-service-attachment"
+  region                = var.region
+  connection_preference = "ACCEPT_ANY"
+  enable_proxy_protocol = true
+  target_service        = "projects/${var.project_id}/global/services/sql.googleapis.com"
+  nat_subnets           = [google_compute_subnetwork.private_subnet.id]
+  project               = var.project_id
+  depends_on            = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
 }
 
 
@@ -100,31 +97,27 @@ resource "google_container_cluster" "cluster" {
   location                 = var.zone
   deletion_protection      = false
   remove_default_node_pool = false
-  initial_node_count       = 1  # Ensure at least 1 node
-
-  network    = google_compute_network.vpc_network.name
-  subnetwork = google_compute_subnetwork.private_subnet.name
-
+  initial_node_count       = 1
+  network                  = google_compute_network.vpc_network.name
+  subnetwork               = google_compute_subnetwork.private_subnet.name
   private_cluster_config {
     enable_private_nodes    = true
     enable_private_endpoint = true
   }
-
-  master_authorized_networks_config {}
-   project = var.project_id
+  project    = var.project_id
   depends_on = [google_compute_subnetwork.private_subnet]
 }
+
 
 
 # ------------------------------------------------------------
 # Firewall Rule (Create if VPC exists)
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  name                   = var.frewall_name
-  network                = google_compute_network.vpc_network.name
-  direction              = "INGRESS"
-  priority               = 1000
-
+  name       = var.frewall_name
+  network    = google_compute_network.vpc_network.name
+  direction  = "INGRESS"
+  priority   = 1000
   allow {
     protocol = "tcp"
     ports    = ["5432"]
@@ -132,9 +125,10 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
-      project = var.project_id
-  depends_on = [google_compute_network.vpc_network]
+  project       = var.project_id
+  depends_on    = [google_compute_network.vpc_network]
 }
+
 
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
