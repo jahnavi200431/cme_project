@@ -63,7 +63,7 @@ spec:
 
             # IAM Authentication
             - "--auto-iam-authn"
-
+            - "--private-ip"
             # Connect through the instance's PRIVATE I
             
 
