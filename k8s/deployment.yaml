@@ -14,7 +14,7 @@ spec:
       labels:
         app: gke-rest-api
     spec:
-      serviceAccountName: app-workload-sa
+      serviceAccountName: app-workload-sa  # Kubernetes SA annotated with GCP SA
       containers:
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
@@ -28,7 +28,7 @@ spec:
             - name: DB_NAME
               value: "appdb"
             - name: DB_USER
-              value: "user1"
+              value: "product-api-gsa@my-project-app-477009.iam.gserviceaccount.com"  # Use GCP SA for IAM Auth
           readinessProbe:
             httpGet:
               path: /ready
@@ -54,21 +54,14 @@ spec:
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
-            # Instance connection name (positional argument)
+            # Instance connection name
             - "my-project-app-477009:us-central1:products-db-instance1"
-
             # Listener configuration
             - "--address=127.0.0.1"
             - "--port=5432"
-
             # IAM Authentication
             - "--auto-iam-authn"
             - "--private-ip"
-            # Connect through the instance's PRIVATE I
-            
-
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-
-            
