@@ -72,13 +72,18 @@ resource "google_sql_database_instance" "db_instance" {
 
   settings {
     tier = "db-f1-micro"
+
     ip_configuration {
-      ipv4_enabled    = false  # No external IP
-      private_network = data.google_compute_network.private_subnet.self_link  # Private network for Cloud SQL
+      private_network = data.google_compute_network.vpc_network.self_link
+      ipv4_enabled    = false
     }
   }
 
+  depends_on = [
+    google_service_networking_connection.private_service_connect
+  ]
 }
+
 # Fetch the password from Google Cloud Secret Manager
 data "google_secret_manager_secret_version" "db_password" {
   secret  = "db-password"
