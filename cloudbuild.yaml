@@ -76,7 +76,6 @@ steps:
         echo "📦 Applying Kubernetes manifests..."
         
         kubectl apply -f k8s/ServiceAccount.yaml
-        kubectl apply -f k8s/secret-provider-class.yaml
         kubectl apply -f k8s/deployment.yaml
         
         
