@@ -14,7 +14,7 @@ spec:
       labels:
         app: gke-rest-api
     spec:
-      serviceAccountName: app-workload-sa
+      serviceAccountName: app-workload-sa  # Must be annotated with GCP SA
       volumes:
         - name: secrets-store-inline
           csi:
@@ -62,11 +62,11 @@ spec:
             failureThreshold: 5
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "50m"
+              memory: "64Mi"
             limits:
-              cpu: "300m"
-              memory: "256Mi"
+              cpu: "200m"
+              memory: "128Mi"
           volumeMounts:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
@@ -78,6 +78,13 @@ spec:
             - "--port=5432"
             - "--auto-iam-authn"
             - "--instance=my-project-app-477009:us-central1:products-db-instance"
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "128Mi"
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
