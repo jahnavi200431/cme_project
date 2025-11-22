@@ -36,8 +36,10 @@ spec:
               value: "appdb"
             - name: DB_USER
               value: "user1"
-            - name: GCP_PROJECT_ID
-              value: my-project-app-477009
+            - name: DB_PASS
+              value: "postgres"       # direct password
+            - name: API_KEY
+              value: "restapi123"     # direct API key
             - name: INIT_DB_ONLY
               value: "false"  
           readinessProbe:
