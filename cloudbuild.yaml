@@ -94,9 +94,10 @@ steps:
           --zone=us-central1-a \
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
-        
-        kubectl apply -f k8s/deployment.yaml
+        kubectl apply -f secrets-store-csi-driver-crds.yaml
         kubectl apply -f k8s/secret-provider-class.yaml
+        kubectl apply -f k8s/deployment.yaml
+        
        
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
