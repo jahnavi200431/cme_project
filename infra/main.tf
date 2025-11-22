@@ -61,27 +61,41 @@ resource "google_compute_subnetwork" "private_subnet" {
 } */
 
 # Create the Kubernetes Cluster
-/*  resource "google_container_cluster" "cluster" {
+resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
-  location                 = var.zone_name
+  location                 = var.zone_name  # The zone (or region) where the cluster will be created
   deletion_protection      = false
   remove_default_node_pool = false
-  initial_node_count       = 1
-  network                  = data.google_compute_network.vpc_network.name
-  subnetwork               = data.google_compute_subnetwork.private_subnet.name
+  initial_node_count       = 1  # Number of initial nodes in the cluster
+  network                  = data.google_compute_network.vpc_network.name  # VPC network to use
+  subnetwork               = data.google_compute_subnetwork.private_subnet.name  # Subnetwork within the VPC
 
+  # Private Cluster Configuration (private nodes)
   private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = false  # Private endpoint is set to false
+    enable_private_nodes    = true  # Nodes are private, i.e., no public IPs
+    enable_private_endpoint = false  # The Kubernetes API server is accessible via public IP
   }
 
+  # Node configuration with Cloud SQL connected scopes
+  node_config {
+    machine_type = "n1-standard-1"  # Adjust based on your requirements
+
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform",  # Cloud SQL and other Google Cloud APIs
+      "https://www.googleapis.com/auth/compute",         # Compute Engine scope
+      "https://www.googleapis.com/auth/devstorage.read_write"  # Google Cloud Storage scope
+    ]
+  }
+
+  # Ensures network and subnetwork are created before cluster
   depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
-} */
+}
+
 # Create the Cloud SQL Database Instance with Private IP
 # Reserve a global IP address for Private Services Access
 
 # Reserve a global IP address for Private Services Access
-resource "google_sql_database_instance" "db_instance" {
+/* resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
   region           = var.region_name
@@ -93,7 +107,7 @@ resource "google_sql_database_instance" "db_instance" {
       private_network = data.google_compute_network.vpc_network.self_link
       ipv4_enabled    = false
     }
-  }
+  } */
 
 /*   depends_on = [
     google_service_networking_connection.private_service_connect
