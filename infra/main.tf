@@ -22,16 +22,20 @@ resource "google_compute_global_address" "private_services_ip" {
   project = var.project_id
 }
 
-# Create Private Services Connection
+# Create Private Services Connection (target_service will point to Cloud SQL)
 resource "google_compute_service_attachment" "private_services_connection" {
   name        = "private-services-connection"
   region      = var.region_name
   project     = var.project_id
-  connection_id = google_compute_global_address.private_services_ip.id
+  target_service = "services/servicenetworking.googleapis.com"
 
-  nat_subnetworks {
+  # NAT subnets that will be used for Private Google Access
+  nat_subnets {
     subnetwork = google_compute_subnetwork.private_subnet.id
   }
+
+  # If needed, enable proxy protocol (though generally not needed for Cloud SQL)
+  enable_proxy_protocol = false
 }
 
 # Create the Cloud SQL Database Instance
