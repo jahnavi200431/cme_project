@@ -12,7 +12,7 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxUnavailable: 1   # ensures at least one pod stays running during update
+      maxUnavailable: 1
       maxSurge: 1
   template:
     metadata:
@@ -25,6 +25,7 @@ spec:
       containers:
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+          command: ["/bin/bash", "/app/start.sh"]   # <-- wait-for-proxy wrapper
           ports:
             - containerPort: 8080
           env:
@@ -37,23 +38,21 @@ spec:
             - name: DB_USER
               value: "user1"
             - name: DB_PASS
-              value: "postgres"       # direct password
+              value: "postgres"
             - name: API_KEY
-              value: "restapi123"     # direct API key
-            - name: INIT_DB_ONLY
-              value: "false"  
+              value: "restapi123"
           readinessProbe:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 30
+            initialDelaySeconds: 5
             periodSeconds: 10
-            failureThreshold: 5
+            failureThreshold: 6
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 45
+            initialDelaySeconds: 30
             periodSeconds: 20
             failureThreshold: 5
           resources:
@@ -79,19 +78,3 @@ spec:
             limits:
               cpu: "50m"
               memory: "256Mi"
-
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: gke-rest-api-lb
-  labels:
-    app: gke-rest-api
-spec:
-  type: LoadBalancer
-  selector:
-    app: gke-rest-api
-  ports:
-    - protocol: TCP
-      port: 80        # external port
-      targetPort: 8080  # container port
