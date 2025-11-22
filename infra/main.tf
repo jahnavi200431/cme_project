@@ -65,8 +65,6 @@ resource "google_container_cluster" "cluster" {
      enable_private_nodes = true
      enable_private_endpoint = false
    }
-  # Enable Cloud SQL Integration
-  enable_ip_aliases = true
 }
 
 # Firewall Rule (Create if VPC exists)
