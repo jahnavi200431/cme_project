@@ -139,7 +139,7 @@ def readiness():
 # DATABASE CONFIG
 # ---------------------------------------------------------
 DB_HOST = "127.0.0.1"
-DB_NAME = "postgres"
+DB_NAME = "appdb"
 DB_USER = "user1"
 DB_PASS = "postgres"
 DB_PORT = 5432
