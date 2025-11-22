@@ -98,7 +98,7 @@ resource "google_sql_database_instance" "db_instance" {
   ]
 }
 
-# #Fetch the password from Google Cloud Secret Manager
+# Fetch the password from Google Cloud Secret Manager
 data "google_secret_manager_secret_version" "db_password" {
   secret  = "db-password"
 }
