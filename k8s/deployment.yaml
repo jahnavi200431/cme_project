@@ -15,6 +15,9 @@ spec:
         app: gke-rest-api
     spec:
       serviceAccountName: app-workload-sa
+      # Schedule pods only on the new pool
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cloudsql-pool
       containers:
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
@@ -33,23 +36,23 @@ spec:
             httpGet:
               path: /ready
               port: 8080
-            initialDelaySeconds: 45
+            initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 5
           livenessProbe:
             httpGet:
               path: /health
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 45
             periodSeconds: 20
             failureThreshold: 5
           resources:
             requests:
-              cpu: "100m"
-              memory: "128Mi"
+              cpu: "50m"
+              memory: "64Mi"
             limits:
-              cpu: "300m"
-              memory: "256Mi"
+              cpu: "150m"
+              memory: "128Mi"
 
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
@@ -59,13 +62,10 @@ spec:
             - "--port=5432"
             - "--auto-iam-authn"
             - "--private-ip"
-          # Use default security context to allow access to GCP metadata
-          # Do NOT set runAsNonRoot
           resources:
             requests:
-              cpu: "50m"
-              memory: "64Mi"
+              cpu: "25m"
+              memory: "32Mi"
             limits:
-              cpu: "200m"
-              memory: "128Mi"
-
+              cpu: "100m"
+              memory: "64Mi"
