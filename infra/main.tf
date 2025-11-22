@@ -1,8 +1,11 @@
+provider "google" {
+  project = var.project_id
+  region  = var.region
+}
+
 # Create the VPC Network
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
-  auto_create_subnetworks = false
-  project                = var.project_id
 }
 
 # Create the Private Subnet
@@ -11,40 +14,9 @@ resource "google_compute_subnetwork" "private_subnet" {
   region                    = var.region_name
   network                   = google_compute_network.vpc_network.id
   ip_cidr_range             = "10.10.0.0/24"
-}
-resource "google_compute_subnetwork" "sql_subnet" {
-  name          = "sql-subnet"
-  ip_cidr_range = "10.20.0.0/24"
-  region        = var.region_name
-  network       = google_compute_network.vpc_network.id
-  purpose       = "PRIVATE"
-  role          = "ACTIVE"
-}
-# Reserve a global IP address for Private Services Access
-resource "google_compute_global_address" "private_services_ip" {
-  name    = "private-services-ip"
-  purpose = "VPC_PEERING"
-  project = var.project_id
+  private_ip_google_access = true
 }
 
-# Create Private Services Connection (target_service will point to Cloud SQL)
-resource "google_compute_service_attachment" "private_services_connection" {
-  name            = "private-services-connection"
-  region          = var.region_name
-  project         = var.project_id
-  target_service  = "services/servicenetworking.googleapis.com"  # Target the Private Google Access service
-
-  # Connection preference - typically, you would use 'PREFERRED' for Cloud SQL
-  connection_preference = "PREFERRED"
-
-  # NAT subnets that will be used for Private Google Access
-  nat_subnets = [
-    google_compute_subnetwork.private_subnet.id
-  ]
-
-  # Enable Proxy Protocol (typically set to false unless needed for specific use cases)
-  enable_proxy_protocol = false
-}
 
 # Create the Cloud SQL Database Instance
 resource "google_sql_database_instance" "db_instance" {
@@ -56,33 +28,22 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network.id  # Private network for Cloud SQL
+      private_network = google_compute_network.vpc_network.self_link
     }
   }
 
-  project    = var.project_id
   depends_on = [google_compute_network.vpc_network, google_compute_service_attachment.private_services_connection]
-}
-
-# Ensure private services connection (for Cloud SQL private IP)
-resource "google_compute_network_peering" "private_services_connection" {
-  name         = "private-services-connection"
-  network      = google_compute_network.vpc_network.id
-  peer_network = "projects/${var.project_id}/global/networks/default"  # Peer to Google's default network for SQL
-  #auto_create_routes = true
 }
 
 # Fetch the password from Google Cloud Secret Manager
 data "google_secret_manager_secret_version" "db_password" {
   secret  = "db-password"
-  project = var.project_id
 }
 
 # Create Database
 resource "google_sql_database" "database" {
   name     = var.db_name
   instance = google_sql_database_instance.db_instance.name
-  project  = var.project_id
 }
 
 # Create DB User
@@ -90,14 +51,12 @@ resource "google_sql_user" "db_user" {
   name     = var.db_user
   instance = google_sql_database_instance.db_instance.name
   password = data.google_secret_manager_secret_version.db_password.secret_data
-  project  = var.project_id
 }
 
 # Create the Kubernetes Cluster
 resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone_name
-   networking_mode = "VPC_NATIVE"
   deletion_protection      = false
   remove_default_node_pool = false
   initial_node_count       = 1
@@ -107,10 +66,9 @@ resource "google_container_cluster" "cluster" {
    private_cluster_config {
      enable_private_nodes = true
      enable_private_endpoint = false
-     master_ipv4_cidr_block = "10.100.0.0/28"
    }
-
-ip_allocation_policy {}
+  # Enable Cloud SQL Integration
+  enable_ip_aliases = true
   }
 
   project    = var.project_id
