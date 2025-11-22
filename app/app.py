@@ -2,10 +2,8 @@ from flask import Flask, jsonify, request
 import logging
 import sys
 import json
-import io
-import os
-from google.cloud import secretmanager
 import psycopg2
+import os
 
 app = Flask(__name__)
 
@@ -38,43 +36,25 @@ logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
 # --------------------------
-# SECRET MANAGER
+# CONFIG
 # --------------------------
-client = secretmanager.SecretManagerServiceClient()
-
-def get_secret(project_id, secret_name):
-    try:
-        secret_version_path = f"projects/{project_id}/secrets/{secret_name}/versions/latest"
-        response = client.access_secret_version(name=secret_version_path)
-        return response.payload.data.decode("UTF-8")
-    except Exception as e:
-        logger.error({"event": "secret_manager_error", "secret": secret_name, "error": str(e)}, exc_info=True)
-        return None
-
-# Load secrets
-project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
-DB_PASS = "postgres"
-API_KEY = "restapi123"  # You can also store this in Secret Manager
-
-if not DB_PASS or not API_KEY:
-    logger.error({"event": "missing_secrets"})
-    sys.exit(1)
+DB_HOST = "127.0.0.1"
+DB_NAME = "appdb"
+DB_USER = "user1"
+DB_PASS = "postgres"      # direct password
+DB_PORT = 5432            # direct port
+API_KEY = "restapi123"
 
 # --------------------------
-# DATABASE CONFIG
+# DATABASE CONNECTION
 # --------------------------
-DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
-DB_NAME = os.getenv("DB_NAME", "appdb")
-DB_USER = os.getenv("DB_USER", "user1")
-DB_PORT = int(os.getenv("DB_PORT", 5432))
-
 def get_db_connection(check_only=False):
     try:
         conn = psycopg2.connect(
             host=DB_HOST,
             database=DB_NAME,
             user=DB_USER,
-            password=DB_PASS,  # ✅ Corrected to use DB_PASS
+            password=DB_PASS,
             port=DB_PORT,
             connect_timeout=5
         )
@@ -135,9 +115,6 @@ def require_api_key():
         or request.headers.get("x-api-key")
         or request.headers.get("Authorization")
     )
-    if API_KEY is None:
-        logger.error({"event": "api_key_env_missing"})
-        return False
     if provided_key != API_KEY:
         logger.warning({"event": "auth_failed", "provided_key": provided_key})
         return False
@@ -163,35 +140,29 @@ def readiness():
 # --------------------------
 @app.route("/")
 def home():
-    return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
+    return {"message": "Welcome to Product API"}, 200
 
 @app.route("/products", methods=["GET"])
 def get_products():
-    conn = None
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "DB connection failed"}, 500
     try:
-        conn = get_db_connection()
-        if not conn:
-            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("SELECT * FROM product;")
         rows = cur.fetchall()
         columns = [desc[0] for desc in cur.description]
         return jsonify([dict(zip(columns, row)) for row in rows])
-    except Exception as e:
-        logger.exception("Error fetching products")
-        return {"error": str(e)}, 500
     finally:
-        if conn:
-            cur.close()
-            conn.close()
+        cur.close()
+        conn.close()
 
 @app.route("/products/<int:product_id>", methods=["GET"])
 def get_product(product_id):
-    conn = None
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "DB connection failed"}, 500
     try:
-        conn = get_db_connection()
-        if not conn:
-            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("SELECT * FROM product WHERE id=%s;", (product_id,))
         row = cur.fetchone()
@@ -199,24 +170,19 @@ def get_product(product_id):
             return {"error": "Product not found"}, 404
         columns = [desc[0] for desc in cur.description]
         return jsonify(dict(zip(columns, row)))
-    except Exception as e:
-        logger.exception("Error fetching product")
-        return {"error": str(e)}, 500
     finally:
-        if conn:
-            cur.close()
-            conn.close()
+        cur.close()
+        conn.close()
 
 @app.route("/products", methods=["POST"])
 def add_product():
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
-    conn = None
+    data = request.get_json()
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "DB connection failed"}, 500
     try:
-        data = request.get_json()
-        conn = get_db_connection()
-        if not conn:
-            return {"error": "DB connection failed"}, 500
         cur = conn.cursor()
         cur.execute("""
             INSERT INTO product (name, description, price, quantity)
@@ -231,13 +197,53 @@ def add_product():
         conn.commit()
         new_id = cur.fetchone()[0]
         return {"message": "Product added!", "id": new_id}, 201
-    except Exception as e:
-        logger.exception("Error adding product")
-        return {"error": str(e)}, 500
     finally:
-        if conn:
-            cur.close()
-            conn.close()
+        cur.close()
+        conn.close()
+
+@app.route("/products/<int:product_id>", methods=["PUT"])
+def update_product(product_id):
+    if not require_api_key():
+        return {"error": "Unauthorized"}, 401
+    data = request.get_json()
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "DB connection failed"}, 500
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
+        if not cur.fetchone():
+            return {"error": "Product not found"}, 404
+        cur.execute("""
+            UPDATE product
+            SET name=%s, description=%s, price=%s, quantity=%s, updated_at=NOW()
+            WHERE id=%s;
+        """, (data.get("name"), data.get("description"),
+              float(data.get("price")), int(data.get("quantity")), product_id))
+        conn.commit()
+        return {"message": f"Product {product_id} updated!"}
+    finally:
+        cur.close()
+        conn.close()
+
+@app.route("/products/<int:product_id>", methods=["DELETE"])
+def delete_product(product_id):
+    if not require_api_key():
+        return {"error": "Unauthorized"}, 401
+    conn = get_db_connection()
+    if not conn:
+        return {"error": "DB connection failed"}, 500
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
+        if not cur.fetchone():
+            return {"error": "Product not found"}, 404
+        cur.execute("DELETE FROM product WHERE id=%s;", (product_id,))
+        conn.commit()
+        return {"message": "Product deleted!"}, 200
+    finally:
+        cur.close()
+        conn.close()
 
 # --------------------------
 # START SERVER
