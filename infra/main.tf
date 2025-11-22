@@ -42,7 +42,7 @@ resource "google_compute_service_attachment" "private_services_connection" {
 
   # NAT subnets that will be used for Private Google Access
   nat_subnets = [
-    google_compute_subnetwork.private_subnet.id
+    data.google_compute_subnetwork.private_subnet.id
   ]
 
   # Enable Proxy Protocol (typically set to false unless needed for specific use cases)
@@ -59,7 +59,7 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.vpc_network.self_link  # Private network for Cloud SQL
+      private_network = data.google_compute_network.vpc_network.self_link  # Private network for Cloud SQL
     }
   }
 
@@ -108,7 +108,7 @@ data "google_container_cluster" "cluster" {
 # Firewall Rule to allow access to Cloud SQL via private IP
 resource "google_compute_firewall" "allow_internal" {
   name       = var.firewall_name
-  network    = google_compute_network.vpc_network.name
+  network    = data.google_compute_network.vpc_network.name
   direction  = "INGRESS"
   priority   = 1000
   allow {
