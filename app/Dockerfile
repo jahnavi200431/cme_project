@@ -1,14 +1,23 @@
-FROM python:3.11-slim
+# Use Python 3.11
+FROM python:3.11
 
+# Set working directory inside container
 WORKDIR /app
 
-# Copy requirements
-COPY requirements.txt .
+# Install netcat (for wait-for-proxy.sh)
+RUN apt-get update && apt-get install -y netcat && rm -rf /var/lib/apt/lists/*
+
+# Copy requirements from app folder
+COPY app/requirements.txt .
+
+# Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app code
-COPY app.py .
-COPY start.sh .
+# Copy the rest of the application code
+COPY app/ .
+
+# Copy start.sh (wait-for-proxy script)
+COPY app/start.sh .
 
 # Make start.sh executable
 RUN chmod +x start.sh
@@ -16,5 +25,5 @@ RUN chmod +x start.sh
 # Expose port
 EXPOSE 8080
 
-# Set default command to start.sh
+# Start Flask app via start.sh
 CMD ["/bin/bash", "/app/start.sh"]
