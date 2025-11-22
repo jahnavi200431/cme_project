@@ -86,9 +86,6 @@ resource "google_compute_service_attachment" "private_services_connection" {
 
   # Enable Proxy Protocol (set to false unless needed)
   enable_proxy_protocol = false
-
-  # Associate the global IP with this private services connection
-  ip_address = google_compute_global_address.private_services_ip.address
 }
 
 # Create the Cloud SQL Database Instance with Private IP
