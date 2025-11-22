@@ -5,7 +5,7 @@ resource "google_compute_network" "vpc_network" {
   project                = var.project_id
 }
 
-## Create the Private Subnet
+# Create the Private Subnet
 resource "google_compute_subnetwork" "private_subnet" {
   name                      = var.subnet_name
   region                    = var.region_name
@@ -13,6 +13,25 @@ resource "google_compute_subnetwork" "private_subnet" {
   ip_cidr_range             = "10.0.0.0/24"
   private_ip_google_access  = true  # Enable Private Google Access
   project                   = var.project_id
+}
+
+# Reserve a global IP address for Private Services Access
+resource "google_compute_global_address" "private_services_ip" {
+  name    = "private-services-ip"
+  purpose = "VPC_PEERING"
+  project = var.project_id
+}
+
+# Create Private Services Connection
+resource "google_compute_service_attachment" "private_services_connection" {
+  name        = "private-services-connection"
+  region      = var.region_name
+  project     = var.project_id
+  connection_id = google_compute_global_address.private_services_ip.id
+
+  nat_subnetworks {
+    subnetwork = google_compute_subnetwork.private_subnet.id
+  }
 }
 
 # Create the Cloud SQL Database Instance
@@ -30,7 +49,7 @@ resource "google_sql_database_instance" "db_instance" {
   }
 
   project    = var.project_id
-  depends_on = [google_compute_network.vpc_network]
+  depends_on = [google_compute_network.vpc_network, google_compute_service_attachment.private_services_connection]
 }
 
 # Ensure private services connection (for Cloud SQL private IP)
