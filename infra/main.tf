@@ -23,6 +23,7 @@ resource "google_service_networking_connection" "private_service_connect" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
 
+
 /*
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
