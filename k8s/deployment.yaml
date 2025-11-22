@@ -71,16 +71,21 @@ spec:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
               readOnly: true
+
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
-            - "--address=127.0.0.1"
+            - "--address=0.0.0.0"
             - "--port=5432"
             - "--auto-iam-authn"
             - "--instance=my-project-app-477009:us-central1:products-db-instance"
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
+          env:
+            # Workload Identity authentication does NOT need gcloud
+            - name: GOOGLE_APPLICATION_CREDENTIALS
+              value: "/mnt/secrets-store/db_password" # optional if using Secret Manager CSI
           volumeMounts:
             - name: secrets-store-inline
               mountPath: "/mnt/secrets-store"
