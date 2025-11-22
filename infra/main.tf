@@ -11,6 +11,7 @@ resource "google_compute_subnetwork" "private_subnet" {
   region        = var.region
   network       = google_compute_network.vpc_network.name
   ip_cidr_range = "10.0.0.0/24"
+   project = var.project_id
 }
 
 # Create the Cloud SQL Database Instance
@@ -26,7 +27,7 @@ resource "google_sql_database_instance" "db_instance" {
       private_network = google_compute_network.vpc_network.id
     }
   }
-
+   project = var.project_id
   depends_on = [google_compute_network.vpc_network]
 }
 
@@ -49,7 +50,7 @@ resource "google_compute_service_attachment" "sql_service_attachment" {
   target_service         = "projects/${var.project_id}/global/services/sql.googleapis.com"
 
   nat_subnets            = [google_compute_subnetwork.private_subnet.id]
-
+  project = var.project_id
   depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
 }
 
@@ -98,7 +99,7 @@ resource "google_container_cluster" "cluster" {
   }
 
   master_authorized_networks_config {}
-
+   project = var.project_id
   depends_on = [google_compute_subnetwork.private_subnet]
 }
 
@@ -119,7 +120,7 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
-
+      project = var.project_id
   depends_on = [google_compute_network.vpc_network]
 }
 
