@@ -4,19 +4,19 @@ FROM python:3.11
 # Set working directory inside container
 WORKDIR /app
 
-# Install netcat (for wait-for-proxy.sh)
-RUN apt-get update && apt-get install -y netcat && rm -rf /var/lib/apt/lists/*
+# Install netcat (wait-for-proxy script)
+RUN apt-get update && apt-get install -y netcat-openbsd && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements from app folder
 COPY app/requirements.txt .
 
-# Install dependencies
+# Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Copy application code
 COPY app/ .
 
-# Copy start.sh (wait-for-proxy script)
+# Copy start.sh script
 COPY app/start.sh .
 
 # Make start.sh executable
