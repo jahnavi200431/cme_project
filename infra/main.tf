@@ -36,6 +36,9 @@ resource "google_compute_service_attachment" "private_services_connection" {
   nat_subnets = [
     google_compute_subnetwork.private_subnet.id
   ]
+
+  # Enable Proxy Protocol (typically set to false unless needed for specific use cases)
+  enable_proxy_protocol = false
 }
 
 # Create the Cloud SQL Database Instance
@@ -127,6 +130,7 @@ resource "google_compute_firewall" "allow_internal" {
   project       = var.project_id
   depends_on    = [google_compute_network.vpc_network]
 }
+
 
 
 
