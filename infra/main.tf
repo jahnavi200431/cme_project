@@ -45,7 +45,7 @@ resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
   network      = google_compute_network.vpc_network.name
   peer_network = "projects/${var.project_id}/global/networks/default"  # Adjust to your peer network
-  auto_create_routes = true
+  #auto_create_routes = true
 }
 
 
