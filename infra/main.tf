@@ -74,7 +74,7 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false  # No external IP
-      private_network = data.google_compute_subnetwork.vpc_network.id  # Private network for Cloud SQL
+      private_network = data.google_compute_network.vpc_network.id  # Private network for Cloud SQL
     }
   }
 
