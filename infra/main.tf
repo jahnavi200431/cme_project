@@ -58,6 +58,7 @@ resource "google_compute_service_attachment" "sql_service_attachment" {
 # ------------------------------------------------------------
 data "google_secret_manager_secret_version" "db_password" {
   secret = "db-password"
+  project = var.project_id  # Ensure the project_id is specified here if not using default project
 }
 
 # ------------------------------------------------------------
