@@ -16,21 +16,21 @@ variable "zone" {
 
 variable "vpc_name" {
   description = "The name of the VPC"
-  default     = "products-vpc"
+  default     = "products-vpc1"
 }
 
 variable "subnet_name" {
   description = "The name of the subnet"
-  default     = "products-subnet"
+  default     = "products-subnet1"
 }
 
 variable "cluster_name" {
   description = "The name of the subnet"
-  default     = "product-gke-cluster"
+  default     = "products-gke-cluster1"
 }
 variable "db_instance_name" {
   description = "The name of the PostgreSQL database"
-  default     = "products-db-instance"
+  default     = "products-db-instance1"
 }
 
 variable "db_name" {
