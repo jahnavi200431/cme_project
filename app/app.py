@@ -10,7 +10,7 @@ app = Flask(__name__)
 
 # -----------------------------------------------------
 # JSON LOGGING (CLOUD LOGGING FRIENDLY)
-# -------------------------------------------------------
+# -----------------------------------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -151,6 +151,7 @@ def create_table_if_not_exists():
         return
     try:
         cur = conn.cursor()
+        # Create table
         cur.execute("""
             CREATE TABLE IF NOT EXISTS product (
                 id SERIAL PRIMARY KEY,
@@ -164,6 +165,19 @@ def create_table_if_not_exists():
         """)
         conn.commit()
         logger.info({"event": "table_created"})
+
+        # Insert 2 initial products if table empty
+        cur.execute("SELECT COUNT(*) FROM product;")
+        count = cur.fetchone()[0]
+        if count == 0:
+            cur.execute("""
+                INSERT INTO product (name, description, price, quantity)
+                VALUES
+                ('Product A', 'Description A', 10.50, 5),
+                ('Product B', 'Description B', 20.00, 10);
+            """)
+            conn.commit()
+            logger.info({"event": "initial_products_inserted"})
     except Exception as e:
         logger.error({"event": "table_creation_error", "error": str(e)})
     finally:
@@ -302,13 +316,8 @@ def delete_product(product_id):
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
 
-    if os.getenv("INIT_DB_ONLY") == "true":
-        try:
-            create_table_if_not_exists()
-        except Exception as e:
-            logger.error({"event": "init_db_failed", "error": str(e)})
-        sys.exit(0)
-
+    # Create table and insert 2 initial products
     create_table_if_not_exists()
+
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
