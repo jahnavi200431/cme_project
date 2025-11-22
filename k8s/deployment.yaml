@@ -50,13 +50,21 @@ spec:
             limits:
               cpu: "300m"
               memory: "256Mi"
+
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
+            # Instance connection name (positional argument)
+            - "my-project-app-477009:us-central1:products-db-instance1"
+
+            # Proxy settings
             - "--address=127.0.0.1"
             - "--port=5432"
             - "--auto-iam-authn"
-            - "--instance=my-project-app-477009:us-central1:products-db-instance1"
+
+            # Use Cloud SQL's private IP (no value allowed)
+            - "--private-ip"
+
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
