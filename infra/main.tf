@@ -43,9 +43,10 @@ resource "google_compute_global_address" "private_ip_address" {
 # Ensure private services connection (for Cloud SQL private IP)
 resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
-  network      = google_compute_network.vpc_network.name
-  peer_network = "projects/${var.project_id}/global/networks/default"  # Adjust to your peer network
-  #auto_create_routes = true
+  network      = "projects/${var.project_id}/global/networks/${google_compute_network.vpc_network.name}"  # Full network path
+  peer_network = "projects/${var.project_id}/global/networks/default"  # Ensure this points to the correct network, typically "default"
+
+  // You can add other configurations if necessary, but remove `auto_create_routes`
 }
 
 
