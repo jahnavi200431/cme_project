@@ -25,46 +25,32 @@ resource "google_compute_subnetwork" "private_subnet" {
 }
  */
 
+# Reserve a global IP address for the Private Services Access (Cloud SQL)
+resource "google_compute_global_address" "private_services_ip" {
+  name    = "private-services-ip"
+  purpose = "VPC_PEERING"  # This ensures it's used for private services access
+}
 
-# Create the Private Services Connection for Cloud SQL
-/* resource "google_compute_service_attachment" "private_services_connection" {
-  name            = "private-services-connection"
-  region          = var.region_name
-  target_service  = "services/servicenetworking.googleapis.com"  # Private service network for Cloud SQL
+# Create the Private Services Connection (Service Attachment)
+resource "google_compute_service_attachment" "private_services_connection" {
+  name               = "private-services-connection"
+  region             = var.region_name
+  project            = var.project_id
+  target_service     = "services/servicenetworking.googleapis.com"  # Private service endpoint for Cloud SQL
 
-  # Connection preference - typically, you would use 'PREFERRED' for Cloud SQL
+  # Connection preference - 'PREFERRED' for Cloud SQL
   connection_preference = "PREFERRED"
 
-  # NAT subnets that will be used for Private Google Access
+  # Specify the NAT subnets for Private Google Access
   nat_subnets = [
     data.google_compute_subnetwork.private_subnet.id
   ]
 
-  # Enable Proxy Protocol (typically set to false unless needed for specific use cases)
+  # Proxy Protocol for this connection (set to false unless necessary)
   enable_proxy_protocol = false
-} */
+}
 
-# Create the Kubernetes Cluster
-/*  resource "google_container_cluster" "cluster" {
-  name                     = var.cluster_name
-  location                 = var.zone_name
-  deletion_protection      = false
-  remove_default_node_pool = false
-  initial_node_count       = 1
-  network                  = data.google_compute_network.vpc_network.name
-  subnetwork               = data.google_compute_subnetwork.private_subnet.name
-
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = false  # Private endpoint is set to false
-  }
-
-  depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
-} */
 # Create the Cloud SQL Database Instance with Private IP
-# Reserve a global IP address for Private Services Access
-
-# Reserve a global IP address for Private Services Access
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -74,10 +60,11 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false  # No external IP
-      private_network = data.google_compute_network.vpc_network.id  # Private network for Cloud SQL
+      private_network = data.google_compute_network.vpc_network.id  # Full network URL
     }
   }
 
+  depends_on = [google_compute_service_attachment.private_services_connection]
 }
 # Fetch the password from Google Cloud Secret Manager
 data "google_secret_manager_secret_version" "db_password" {
