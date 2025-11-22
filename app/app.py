@@ -110,7 +110,7 @@ def get_secret(project_id, secret_name):
     response = client.access_secret_version(name=secret_version_path)
     return response.payload.data.decode("UTF-8")
 
-project_id = os.getenv("GCP_PROJECT_ID")
+project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
 DB_PASS = get_secret(project_id, "db-password")
 API_KEY = get_secret(project_id, "api-key")
 
