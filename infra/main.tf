@@ -75,7 +75,7 @@ resource "google_sql_database_instance" "db_instance" {
     }
   }
 
-  depends_on = [google_compute_service_attachment.private_services_connection]
+ # depends_on = [google_compute_service_attachment.private_services_connection]
 }
 
 # Fetch the password from Google Cloud Secret Manager
