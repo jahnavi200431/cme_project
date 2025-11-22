@@ -15,13 +15,6 @@ spec:
         app: gke-rest-api
     spec:
       serviceAccountName: app-workload-sa
-      volumes:
-        - name: secrets-store-inline
-          csi:
-            driver: secrets-store.csi.k8s.io
-            readOnly: true
-            volumeAttributes:
-              secretProviderClass: "gcp-secrets-spc"
       containers:
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
