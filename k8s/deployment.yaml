@@ -61,11 +61,11 @@ spec:
 
           resources:
             requests:
-              cpu: "200m"
-              memory: "512Mi"
+              cpu: "100m"
+              memory: "64Mi"
             limits:
-              cpu: "1000m"
-              memory: "1024Mi"
+              cpu: "500m"
+              memory: "256Mi"
 
           volumeMounts:
             - name: secret-volume
