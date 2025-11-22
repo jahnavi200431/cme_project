@@ -39,12 +39,12 @@ spec:
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
-                  name: db-credentials
+                  name:  gcp-secrets-spc
                   key: DB_PASS
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
-                  name: db-credentials
+                  name:  gcp-secrets-spc
                   key: API_KEY
           readinessProbe:
             httpGet:
