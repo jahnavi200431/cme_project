@@ -20,7 +20,7 @@ metadata:
   labels:
     app: my-project-app-477009
 spec:
-  replicas: 2
+  replicas: 1
   strategy:
     type: RollingUpdate
     rollingUpdate:
@@ -124,8 +124,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: my-project-app-477009
-  minReplicas: 2
-  maxReplicas: 5
+  minReplicas: 1
+  maxReplicas: 1
   metrics:
     - type: Resource
       resource:
