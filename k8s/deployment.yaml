@@ -14,6 +14,7 @@ spec:
       labels:
         app: gke-rest-api
     spec:
+      serviceAccountName: app-workload-sa
       volumes:
         - name: secrets-store-inline
           csi:
@@ -56,21 +57,13 @@ spec:
             limits:
               cpu: "300m"
               memory: "256Mi"
-          volumeMounts:
-            - name: secrets-store-inline
-              mountPath: "/mnt/secrets-store"
-              readOnly: true
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
           args:
             - "--address=127.0.0.1"
             - "--port=5432"
             - "--auto-iam-authn"
-            - "--instance=my-project-app-477009:us-central1:products-db-instance"
+            - "--instance=my-project-app-477009:us-central1:products-db-instance1"
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
-          volumeMounts:
-            - name: secrets-store-inline
-              mountPath: "/mnt/secrets-store"
-              readOnly: true

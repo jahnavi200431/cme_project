@@ -1,6 +1,8 @@
 options:
   logging: CLOUD_LOGGING_ONLY
 
+serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com"
+
 substitutions:
   _TAG: $SHORT_SHA
   _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
@@ -28,27 +30,7 @@ steps:
   
   
 
-  # ---------------------------------------------------------
-  # 1.1) Initialize Database (create table)
-  # ---------------------------------------------------------
-  - name: python:3.11
-    id: "Init Database"
-    entrypoint: bash
-    args:
-      - "-c"
-      - |
-        echo "🔧 Loading environment variables from .env..."
-        if [ -f .env ]; then
-            set -o allexport
-            source .env
-            set +o allexport
-        else
-          echo "⚠ .env file not found!"
-          exit 1
-        fi
-        cd app
-        pip install -r requirements.txt
-        INIT_DB_ONLY=true python app.py
+  #
   # ----------------------------------------------------------
   # 2) Build Docker Image with UNIQUE TAG
   # ----------------------------------------------------------
@@ -88,11 +70,13 @@ steps:
       - |
         echo "🚀 Starting deployment to GKE..."
 
-        gcloud container clusters get-credentials products-gke-cluster1 \
+        gcloud container clusters get-credentials product-gke-cluster \
           --zone=us-central1-a \
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
         
+        kubectl apply -f k8s/ServiceAccount.yaml
+        kubectl apply -f k8s/secret-provider-class.yaml
         kubectl apply -f k8s/deployment.yaml
         
         
