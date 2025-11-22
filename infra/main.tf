@@ -10,6 +10,7 @@ data "google_compute_network" "vpc_network" {
 data "google_compute_subnetwork" "private_subnet" {
      name                      = var.subnet_name
     }
+/*
 resource "google_compute_global_address" "private_ip_range" {
   name          = "private-ip-range1"
   purpose       = "VPC_PEERING"
@@ -22,6 +23,7 @@ resource "google_service_networking_connection" "private_service_connect" {
   service                 = "services/servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
+ */
 
 
 /*
@@ -93,9 +95,9 @@ resource "google_sql_database_instance" "db_instance" {
     }
   }
 
-  depends_on = [
+/*   depends_on = [
     google_service_networking_connection.private_service_connect
-  ]
+  ] */
 }
 
 # Fetch the password from Google Cloud Secret Manager
