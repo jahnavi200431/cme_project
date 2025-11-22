@@ -120,7 +120,7 @@ resource "google_container_cluster" "cluster" {
 # Firewall Rule (Create if VPC exists)
 # ------------------------------------------------------------
 resource "google_compute_firewall" "allow_internal" {
-  name                   = "allow-internal-traffic"
+  name                   = var.frewall_name
   network                = google_compute_network.vpc_network.name
   direction              = "INGRESS"
   priority               = 1000

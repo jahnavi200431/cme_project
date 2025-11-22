@@ -32,7 +32,10 @@ variable "db_instance_name" {
   description = "The name of the PostgreSQL database"
   default     = "products-db-instance1"
 }
-
+variable "frewall_name" {
+  description = "The name of the PostgreSQL database"
+  default     = "allow-internal-traffic1"
+}
 variable "db_name" {
   description = "The name of the PostgreSQL database"
   default     = "appdb"
