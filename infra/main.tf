@@ -45,7 +45,7 @@ resource "google_compute_subnetwork" "private_subnet" {
 } */
 
 # Create the Kubernetes Cluster
- resource "google_container_cluster" "cluster" {
+/*  resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
@@ -60,7 +60,7 @@ resource "google_compute_subnetwork" "private_subnet" {
   }
 
   depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
-}
+} */
 # Create the Cloud SQL Database Instance with Private IP
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
