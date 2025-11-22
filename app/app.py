@@ -308,9 +308,15 @@ def delete_product(product_id):
 # ---------------------------------------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
+    
     if os.getenv("INIT_DB_ONLY") == "true":
-        create_table_if_not_exists()
+        try:
+            create_table_if_not_exists()
+        except Exception as e:
+            print(f"Not able to connect: {e}")
         sys.exit(0)
+
+    # Normal startup
     create_table_if_not_exists()
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
