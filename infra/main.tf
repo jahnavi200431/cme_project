@@ -2,6 +2,7 @@
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
   auto_create_subnetworks = false
+   project = var.project_id
 }
 
 ## Create the Private Subnet
@@ -34,6 +35,7 @@ resource "google_sql_database_instance" "db_instance" {
 resource "google_compute_global_address" "private_ip_address" {
   name   = "private-ip-address"
   purpose = "VPC_PEERING"  # Specify VPC peering for the service attachment
+   project = var.project_id
 }
 
 
