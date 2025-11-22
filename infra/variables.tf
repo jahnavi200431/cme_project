@@ -6,7 +6,7 @@ variable "project_id" {
 
 variable "region" {
   description = "The region where resources will be created"
-  default     = "us-central"
+  default     = "us-central1"
 }
 
 variable "zone" {
