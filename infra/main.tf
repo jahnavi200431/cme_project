@@ -26,7 +26,6 @@ resource "google_compute_subnetwork" "private_subnet" {
  */
 
 
-
 # Create the Private Services Connection for Cloud SQL
 resource "google_compute_service_attachment" "private_services_connection" {
   name            = "private-services-connection"
@@ -81,10 +80,7 @@ resource "google_sql_user" "db_user" {
 }
 
 # Create the Kubernetes Cluster
- data "google_container_cluster" "cluster" {
-     name                     = var.cluster_name
-     }
-/*  resource "google_container_cluster" "cluster" {
+ resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
@@ -99,7 +95,7 @@ resource "google_sql_user" "db_user" {
   }
 
   depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
-} */
+}
 
 # Firewall Rule to allow access to Cloud SQL via private IP
 resource "google_compute_firewall" "allow_internal" {
