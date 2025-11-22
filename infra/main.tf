@@ -1,4 +1,12 @@
-provider "google" {
+ogle_service_networking_connection.private_service_connect: Still creating... [10s elapsed]
+╷
+│ Error: Error waiting for Create Service Networking Connection: Error code 9, message: Cannot modify allocated ranges in CreateConnection. Please use UpdateConnection. Existing allocated IP ranges: [private-ip-range, privateip].
+│ Help Token: AXcLsyAJHqsf0QM_cok5nfneuAnugJ8cTpDfNp9DXF_hak4Xm_LAB5J4mu4qyqbxOC9MeFoVwYA6OFr-hTDp9g_SnltWW9P9-MQxaprtK2TVTHCc
+│ 
+│   with google_service_networking_connection.private_service_connect,
+│   on main.tf line 20, in resource "google_service_networking_connection" "private_service_connect":
+│   20: resource "google_service_networking_connection" "private_service_connect" {
+│ provider "google" {
   project = var.project_id
   region  = var.region_name
 }
@@ -20,7 +28,7 @@ resource "google_compute_global_address" "private_ip_range" {
 resource "google_service_networking_connection" "private_service_connect" {
   network                 = data.google_compute_network.vpc_network.self_link
   service                 = "services/servicenetworking.googleapis.com"
-  reserved_peering_ranges = ["privateip"]
+  reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
 
 
@@ -161,4 +169,5 @@ resource "google_sql_user" "db_user" {
       "https://www.googleapis.com/auth/cloud-platform"
     ]
   }
-} */
+} */ 
+╵
