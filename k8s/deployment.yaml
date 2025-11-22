@@ -39,9 +39,6 @@ spec:
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/my-project-app-477009:latest
           ports:
             - containerPort: 8080
-        - name: cloud-sql-proxy
-          image: gcr.io/cloudsql-docker/gce-proxy:1.25.0
-          command: ["/cloud_sql_proxy", "-dir=/cloudsql", "-credential_file=/secrets/cloudsql/credentials.json"]
 
           readinessProbe:
             httpGet:
