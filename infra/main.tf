@@ -70,6 +70,7 @@ data "google_secret_manager_secret_version" "db_password" {
 resource "google_sql_database" "database" {
   name     = var.db_name
   instance = google_sql_database_instance.db_instance.name
+     project = var.project_id
 }
 
 # ------------------------------------------------------------
@@ -79,6 +80,7 @@ resource "google_sql_user" "db_user" {
   name     = var.db_user
   instance = google_sql_database_instance.db_instance.name
   password = data.google_secret_manager_secret_version.db_password.secret_data
+     project = var.project_id
 }
 
 
