@@ -65,25 +65,6 @@ resource "google_compute_subnetwork" "private_subnet" {
 # Reserve a global IP address for Private Services Access
 
 # Reserve a global IP address for Private Services Access
-resource "google_compute_service_attachment" "private_services_connection" {
-  name               = "private-services-connection"
-  region             = var.region_name
-  project            = var.project_id
-  target_service     = "services/servicenetworking.googleapis.com"  # Correct service endpoint for Cloud SQL
-
-  # Connection preference - 'PREFERRED' for Cloud SQL
-  connection_preference = "PREFERRED"
-
-  # NAT subnets that will be used for Private Google Access
-  nat_subnets = [
-    data.google_compute_subnetwork.private_subnet.id
-  ]
-
-  # Enable Proxy Protocol (set to false unless needed)
-  enable_proxy_protocol = false
-}
-
-# Create the Cloud SQL Database Instance with Private IP
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -93,14 +74,11 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
     ip_configuration {
       ipv4_enabled    = false  # No external IP
-      private_network = data.google_compute_network.vpc_network.self_link  # Private network for Cloud SQL
+      private_network = data.google_compute_network.private_subnet.self_link  # Private network for Cloud SQL
     }
   }
 
-  # Ensure private services connection is established first
-  depends_on = [google_compute_service_attachment.private_services_connection]
 }
-
 # Fetch the password from Google Cloud Secret Manager
 data "google_secret_manager_secret_version" "db_password" {
   secret  = "db-password"
