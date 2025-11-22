@@ -65,13 +65,6 @@ resource "google_compute_subnetwork" "private_subnet" {
 # Reserve a global IP address for Private Services Access
 
 # Reserve a global IP address for Private Services Access
-resource "google_compute_global_address" "private_services_ip" {
-  name    = "private-services-ip"
-  purpose = "VPC_PEERING"  # Correct purpose for Private Services Access
-  project = var.project_id
-}
-
-# Create the Private Services Connection for Cloud SQL
 resource "google_compute_service_attachment" "private_services_connection" {
   name               = "private-services-connection"
   region             = var.region_name
