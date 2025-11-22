@@ -46,7 +46,6 @@ resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
   network      = "projects/${var.project_id}/global/networks/${google_compute_network.vpc_network.name}"
   peer_network = "projects/${var.project_id}/global/networks/default"
-  project      = var.project_id
 }
 
 # Create Service Attachment for Cloud SQL
