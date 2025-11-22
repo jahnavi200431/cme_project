@@ -3,8 +3,14 @@ provider "google" {
   region  = var.region_name
 }
 
-/*
 # Create the VPC Network
+data "google_compute_network" "vpc_network" {
+  name                   = var.vpc_name
+}
+resource "google_compute_subnetwork" "private_subnet" {
+     name                      = var.subnet_name
+    }
+/*
 resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
 }
@@ -78,9 +84,11 @@ resource "google_sql_user" "db_user" {
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
 
-/*
 # Create the Kubernetes Cluster
-resource "google_container_cluster" "cluster" {
+data "google_container_cluster" "cluster" {
+      name                     = var.cluster_name
+    }
+/* resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
@@ -95,8 +103,7 @@ resource "google_container_cluster" "cluster" {
   }
 
   depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
-}
- */
+} */
 
 # Firewall Rule to allow access to Cloud SQL via private IP
 resource "google_compute_firewall" "allow_internal" {
