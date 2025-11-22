@@ -70,7 +70,7 @@ steps:
       - |
         echo "🚀 Starting deployment to GKE..."
 
-        gcloud container clusters get-credentials product-gke-cluster \
+        gcloud container clusters get-credentials product-gke-cluster1 \
           --zone=us-central1-a \
           --project=my-project-app-477009
         echo "📦 Applying Kubernetes manifests..."
