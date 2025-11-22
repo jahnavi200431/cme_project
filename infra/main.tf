@@ -3,7 +3,7 @@ provider "google" {
   region  = var.region_name
 }
 
-# Create the VPC Network
+## Create the VPC Network
 data "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
 }
