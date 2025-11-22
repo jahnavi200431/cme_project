@@ -31,8 +31,6 @@ resource "google_sql_database_instance" "db_instance" {
       private_network = google_compute_network.vpc_network.self_link
     }
   }
-
-  depends_on = [google_compute_network.vpc_network, google_compute_service_attachment.private_services_connection]
 }
 
 # Fetch the password from Google Cloud Secret Manager
@@ -70,8 +68,6 @@ resource "google_container_cluster" "cluster" {
   # Enable Cloud SQL Integration
   enable_ip_aliases = true
   }
-
-  depends_on = [google_compute_subnetwork.private_subnet]
 }
 
 # Firewall Rule (Create if VPC exists)
@@ -87,7 +83,6 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
-  depends_on    = [google_compute_network.vpc_network]
 }
 
 
