@@ -9,12 +9,17 @@ resource "google_compute_network" "vpc_network" {
 resource "google_compute_subnetwork" "private_subnet" {
   name                      = var.subnet_name
   region                    = var.region_name
-  network                   = google_compute_network.vpc_network.name
-  ip_cidr_range             = "10.0.0.0/24"
-  private_ip_google_access  = true  # Enable Private Google Access
-  project                   = var.project_id
+  network                   = google_compute_network.vpc_network.id
+  ip_cidr_range             = "10.10.0.0/24"
 }
-
+resource "google_compute_subnetwork" "sql_subnet" {
+  name          = "sql-subnet"
+  ip_cidr_range = "10.20.0.0/24"
+  region        = var.region_name
+  network       = google_compute_network.vpc_network.id
+  purpose       = "PRIVATE"
+  role          = "ACTIVE"
+}
 # Reserve a global IP address for Private Services Access
 resource "google_compute_global_address" "private_services_ip" {
   name    = "private-services-ip"
@@ -44,7 +49,7 @@ resource "google_compute_service_attachment" "private_services_connection" {
 # Create the Cloud SQL Database Instance
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
-  database_version = "POSTGRES_13"
+  database_version = "POSTGRES_15"
   region           = var.region_name
 
   settings {
@@ -92,22 +97,20 @@ resource "google_sql_user" "db_user" {
 resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
   location                 = var.zone_name
+   networking_mode = "VPC_NATIVE"
   deletion_protection      = false
   remove_default_node_pool = false
   initial_node_count       = 1
   network                  = google_compute_network.vpc_network.name
   subnetwork               = google_compute_subnetwork.private_subnet.name
 
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = true
-  }
+   private_cluster_config {
+     enable_private_nodes = true
+     enable_private_endpoint = false
+     master_ipv4_cidr_block = "10.100.0.0/28"
+   }
 
-  master_authorized_networks_config {
-    cidr_blocks {
-      cidr_block   = "10.0.0.0/24"  # Replace with your subnet CIDR block (ensure it matches your VPC subnet)
-      display_name = "Internal Network"
-    }
+ip_allocation_policy {}
   }
 
   project    = var.project_id
