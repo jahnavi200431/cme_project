@@ -8,7 +8,7 @@ resource "google_compute_network" "vpc_network" {
 # Create the Private Subnet
 resource "google_compute_subnetwork" "private_subnet" {
   name                      = var.subnet_name
-  region                    = var.region
+  region                    = var.region_name
   network                   = google_compute_network.vpc_network.name
   ip_cidr_range             = "10.0.0.0/24"
   private_ip_google_access  = true  # Enable Private Google Access
@@ -19,7 +19,7 @@ resource "google_compute_subnetwork" "private_subnet" {
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_13"
-  region           = var.region
+  region           = var.region_name
 
   settings {
     tier = "db-f1-micro"
@@ -52,7 +52,7 @@ resource "google_compute_network_peering" "private_services_connection" {
 # Create Service Attachment for Cloud SQL
 resource "google_compute_service_attachment" "sql_service_attachment" {
   name                  = "sql-service-attachment"
-  region                = var.region
+  region                = var.region_name
   connection_preference = "ACCEPT_ANY"
   enable_proxy_protocol = true
   target_service        = "projects/${var.project_id}/global/services/sql.googleapis.com"
@@ -94,7 +94,7 @@ resource "google_sql_user" "db_user" {
 # Create the Kubernetes Cluster
 resource "google_container_cluster" "cluster" {
   name                     = var.cluster_name
-  location                 = var.zone
+  location                 = var.zone_name
   deletion_protection      = false
   remove_default_node_pool = false
   initial_node_count       = 1
@@ -135,7 +135,7 @@ resource "google_compute_firewall" "allow_internal" {
 # ------------------------------------------------------------
 /* resource "google_container_cluster" "gke_with_sql_proxy" {
   name                     = "product-gke-cluster"
-  location                 = var.zone
+  location                 = var.zone_name
   network                  = google_compute_network.vpc_network.name
   subnetwork               = google_compute_subnetwork.private_subnet.name
   initial_node_count       = 1
