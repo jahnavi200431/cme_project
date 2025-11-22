@@ -96,7 +96,7 @@ steps:
         echo "📦 Applying Kubernetes manifests..."
         
         kubectl apply -f k8s/deployment.yaml
-        
+        kubectl apply -f k8s/secret-provider-class.yaml
        
         echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
 
