@@ -5,7 +5,7 @@ resource "google_compute_network" "vpc_network" {
    project = var.project_id
 }
 
-## Create the Private Subnet
+# Create the Private Subnet
 resource "google_compute_subnetwork" "private_subnet" {
   name          = var.subnet_name
   #region        = var.region
