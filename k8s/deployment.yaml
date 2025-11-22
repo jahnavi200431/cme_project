@@ -15,7 +15,6 @@ spec:
         app: gke-rest-api
     spec:
       serviceAccountName: app-workload-sa
-      # Schedule pods only on the new pool
       nodeSelector:
         cloud.google.com/gke-nodepool: cloudsql-pool
       containers:
@@ -48,11 +47,11 @@ spec:
             failureThreshold: 5
           resources:
             requests:
-              cpu: "50m"
-              memory: "64Mi"
+              cpu: "200m"
+              memory: "256Mi"
             limits:
-              cpu: "150m"
-              memory: "128Mi"
+              cpu: "500m"
+              memory: "512Mi"
 
         - name: cloud-sql-proxy
           image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
@@ -64,8 +63,8 @@ spec:
             - "--private-ip"
           resources:
             requests:
-              cpu: "25m"
-              memory: "32Mi"
+              cpu: "50m"
+              memory: "128Mi"
             limits:
-              cpu: "100m"
-              memory: "64Mi"
+              cpu: "200m"
+              memory: "256Mi"
