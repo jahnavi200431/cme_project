@@ -121,28 +121,12 @@ def require_api_key():
     return True
 
 # ---------------------------------------------------------
-# HEALTH CHECKS
+# DATABASE CONFIG (IAM via Cloud SQL Proxy)
 # ---------------------------------------------------------
-@app.route('/health', methods=['GET'])
-def health():
-    return {"status": "healthy"}, 200
-
-@app.route('/ready', methods=['GET'])
-def readiness():
-    conn = get_db_connection(check_only=True)
-    if conn:
-        conn.close()
-        return {"status": "ready"}, 200
-    return {"status": "not ready"}, 500
-
-# ---------------------------------------------------------
-# DATABASE CONFIG
-# ---------------------------------------------------------
-DB_HOST = "127.0.0.1"
-DB_NAME = "appdb"
-DB_USER = "user1"
-DB_PASS = "postgres"
-DB_PORT = 5432
+DB_HOST = os.getenv("DB_HOST", "127.0.0.1")  # Cloud SQL Proxy localhost
+DB_NAME = os.getenv("DB_NAME", "appdb")
+DB_USER = os.getenv("DB_USER", "user1")
+DB_PORT = int(os.getenv("DB_PORT", 5432))
 
 
 def get_db_connection(check_only=False):
@@ -151,7 +135,6 @@ def get_db_connection(check_only=False):
             host=DB_HOST,
             database=DB_NAME,
             user=DB_USER,
-            password=DB_PASS,
             port=DB_PORT,
             connect_timeout=5
         )
@@ -162,9 +145,11 @@ def get_db_connection(check_only=False):
         logger.error({"event": "db_connection_failed", "error": str(e)})
         return None
 
+
 def create_table_if_not_exists():
     conn = get_db_connection()
     if not conn:
+        logger.error({"event": "db_connection_failed", "error": "Cannot create table"})
         return
     try:
         cur = conn.cursor()
@@ -192,7 +177,7 @@ def create_table_if_not_exists():
 # ---------------------------------------------------------
 @app.route("/")
 def home():
-    return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
+    return {"message": "Welcome to Product API (GKE + Cloud SQL via IAM)"}, 200
 
 @app.route("/products", methods=["GET"])
 def get_products():
@@ -258,11 +243,9 @@ def update_product(product_id):
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
     data = request.get_json()
-     
     conn = get_db_connection()
     if not conn:
-        return {"error": "Database connection failed"}, 500
-
+        return {"error": "DB connection failed"}, 500
     try:
         cur = conn.cursor()
         cur.execute("SELECT id FROM product WHERE id=%s;", (product_id,))
@@ -276,10 +259,7 @@ def update_product(product_id):
         """, (data.get("name"), data.get("description"),
               data.get("price"), data.get("quantity"), product_id))
         conn.commit()
-
         return {"message": f"Product {product_id} updated!"}
-    except Exception as e:
-        return {"error": str(e)}, 500
     finally:
         cur.close()
         conn.close()
@@ -308,15 +288,14 @@ def delete_product(product_id):
 # ---------------------------------------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
-    
+
     if os.getenv("INIT_DB_ONLY") == "true":
         try:
             create_table_if_not_exists()
         except Exception as e:
-            print(f"Not able to connect: {e}")
+            logger.error({"event": "init_db_failed", "error": str(e)})
         sys.exit(0)
 
-    # Normal startup
     create_table_if_not_exists()
     port = int(os.getenv("PORT", 8080))
     app.run(host="0.0.0.0", port=port, debug=False)
