@@ -62,6 +62,36 @@ resource "google_compute_subnetwork" "private_subnet" {
   depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
 } */
 # Create the Cloud SQL Database Instance with Private IP
+# Reserve a global IP address for Private Services Access
+resource "google_compute_global_address" "private_services_ip" {
+  name    = "private-services-ip"
+  purpose = "GCE_ENDPOINT"  # Purpose for Private Services Access
+  project = var.project_id
+}
+
+# Create the Private Services Connection for Cloud SQL
+resource "google_compute_service_attachment" "private_services_connection" {
+  name               = "private-services-connection"
+  region             = var.region_name
+  project            = var.project_id
+  target_service     = "services/servicenetworking.googleapis.com"  # Private service network for Cloud SQL
+
+  # Connection preference - 'PREFERRED' for Cloud SQL
+  connection_preference = "PREFERRED"
+
+  # NAT subnets that will be used for Private Google Access
+  nat_subnets = [
+    data.google_compute_subnetwork.private_subnet.id
+  ]
+
+  # Enable Proxy Protocol (set to false unless needed)
+  enable_proxy_protocol = false
+
+  # Associate the global IP with this private services connection
+  ip_address = google_compute_global_address.private_services_ip.address
+}
+
+# Create the Cloud SQL Database Instance with Private IP
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -70,12 +100,13 @@ resource "google_sql_database_instance" "db_instance" {
   settings {
     tier = "db-f1-micro"
     ip_configuration {
-      ipv4_enabled    = false
+      ipv4_enabled    = false  # No external IP
       private_network = data.google_compute_network.vpc_network.self_link  # Private network for Cloud SQL
     }
   }
 
- # depends_on = [google_compute_service_attachment.private_services_connection]
+  # Ensure private services connection is established first
+  depends_on = [google_compute_service_attachment.private_services_connection]
 }
 
 # Fetch the password from Google Cloud Secret Manager
