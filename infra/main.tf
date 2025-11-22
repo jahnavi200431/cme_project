@@ -71,7 +71,6 @@ resource "google_container_cluster" "cluster" {
   enable_ip_aliases = true
   }
 
-  project    = var.project_id
   depends_on = [google_compute_subnetwork.private_subnet]
 }
 
@@ -88,7 +87,6 @@ resource "google_compute_firewall" "allow_internal" {
 
   source_ranges = ["10.0.0.0/24"]
   target_tags   = ["gke-node"]
-  project       = var.project_id
   depends_on    = [google_compute_network.vpc_network]
 }
 
