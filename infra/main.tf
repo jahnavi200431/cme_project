@@ -99,7 +99,7 @@ resource "google_sql_user" "db_user" {
     enable_private_endpoint = false  # Private endpoint is set to false
   }
 
-  depends_on = [google_compute_network.vpc_network, google_compute_subnetwork.private_subnet]
+  depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
 }
 
 # Firewall Rule to allow access to Cloud SQL via private IP
