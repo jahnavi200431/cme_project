@@ -23,14 +23,12 @@ resource "google_compute_subnetwork" "private_subnet" {
 resource "google_compute_global_address" "private_services_ip" {
   name    = "private-services-ip"
   purpose = "VPC_PEERING"
-  project = var.project_id
 }
 
 # Create the Private Services Connection for Cloud SQL
 resource "google_compute_service_attachment" "private_services_connection" {
   name            = "private-services-connection"
   region          = var.region_name
-  project         = var.project_id
   target_service  = "services/servicenetworking.googleapis.com"  # Private service network for Cloud SQL
 
   # Connection preference - typically, you would use 'PREFERRED' for Cloud SQL
