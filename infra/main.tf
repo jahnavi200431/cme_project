@@ -36,8 +36,9 @@ resource "google_sql_database_instance" "db_instance" {
 # Ensure private services connection (for Cloud SQL private IP)
 resource "google_compute_network_peering" "private_services_connection" {
   name         = "private-services-connection"
-  network      = "projects/${var.project_id}/global/networks/${google_compute_network.vpc_network.name}"
-  peer_network = "projects/${var.project_id}/global/networks/default"  # Ensure this is correct for your use case
+  network      = google_compute_network.vpc_network.id
+  peer_network = "projects/${var.project_id}/global/networks/default"  # Peer to Google's default network for SQL
+  auto_create_routes = true
 }
 
 # Fetch the password from Google Cloud Secret Manager
@@ -78,8 +79,8 @@ resource "google_container_cluster" "cluster" {
 
   master_authorized_networks_config {
     cidr_blocks {
-      cidr_block   = "0.0.0.0/0"  # This allows all IPs to access the master. Restrict this to trusted IPs.
-      display_name = "Allow All"
+      cidr_block   = "10.0.0.0/24"  # Replace with your subnet CIDR block (ensure it matches your VPC subnet)
+      display_name = "Internal Network"
     }
   }
 
@@ -103,6 +104,7 @@ resource "google_compute_firewall" "allow_internal" {
   project       = var.project_id
   depends_on    = [google_compute_network.vpc_network]
 }
+
 
 # ------------------------------------------------------------
 # Cloud SQL Proxy Setup (for secure access)
