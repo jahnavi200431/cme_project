@@ -16,7 +16,7 @@ steps:
     args:
       - "-c"
       - |
-        cd infra1
+        cd infra
         echo "🔧 Initializing Terraform..."
         terraform init -input=false
 
