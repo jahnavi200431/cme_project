@@ -53,8 +53,8 @@ def get_secret(project_id, secret_name):
 
 # Load secrets
 project_id = os.getenv("GCP_PROJECT_ID", "my-project-app-477009")
-DB_PASS = get_secret(project_id, "db-password")
-API_KEY ="restapi123"
+DB_PASS = "postgres"
+API_KEY = "restapi123"  # You can also store this in Secret Manager
 
 if not DB_PASS or not API_KEY:
     logger.error({"event": "missing_secrets"})
@@ -74,7 +74,7 @@ def get_db_connection(check_only=False):
             host=DB_HOST,
             database=DB_NAME,
             user=DB_USER,
-            password="postgres",
+            password=DB_PASS,  # ✅ Corrected to use DB_PASS
             port=DB_PORT,
             connect_timeout=5
         )
@@ -167,6 +167,7 @@ def home():
 
 @app.route("/products", methods=["GET"])
 def get_products():
+    conn = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -186,6 +187,7 @@ def get_products():
 
 @app.route("/products/<int:product_id>", methods=["GET"])
 def get_product(product_id):
+    conn = None
     try:
         conn = get_db_connection()
         if not conn:
@@ -209,6 +211,7 @@ def get_product(product_id):
 def add_product():
     if not require_api_key():
         return {"error": "Unauthorized"}, 401
+    conn = None
     try:
         data = request.get_json()
         conn = get_db_connection()
