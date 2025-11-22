@@ -65,7 +65,7 @@ spec:
             - "--auto-iam-authn"
 
             # Connect through the instance's PRIVATE IP
-            - "--private-ip"
+            
 
           securityContext:
             runAsNonRoot: true
