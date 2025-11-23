@@ -1,9 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-# ---------------------------
-# Validate required env var
-# ---------------------------
+
 : "${LB:?ERROR: LB environment variable not set}"
 : "${API_KEY:?ERROR: API_KEY environment variable not set}"
 
@@ -14,9 +12,7 @@ TMPDIR="$(mktemp -d)"
 cleanup() { rm -rf "$TMPDIR"; }
 trap cleanup EXIT
 
-# ---------------------------
-# Helper functions
-# ---------------------------
+
 request() {
   local method="$1"
   local path="$2"
@@ -54,9 +50,7 @@ extract_id() {
     sed -E 's/.*:\s*"?([^"]+)"?/\1/' || true
 }
 
-# ---------------------------
-# Test steps
-# ---------------------------
+
 
 echo "1) GET /products (expecting 200)"
 request GET /products
@@ -141,5 +135,5 @@ if [ "$(get_status)" = "200" ]; then
 fi
 echo "Deletion verified"
 
-echo "✅ All integration tests PASSED"
+echo " All integration tests PASSED"
 exit 0
