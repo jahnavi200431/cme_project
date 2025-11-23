@@ -1,7 +1,7 @@
 options:
   logging: CLOUD_LOGGING_ONLY
 
-
+serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com"
 
 substitutions:
   _TAG: "$SHORT_SHA"
