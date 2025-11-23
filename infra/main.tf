@@ -131,30 +131,3 @@ resource "google_sql_user" "db_user" {
 
 
 
-
- resource "google_container_cluster" "gke_with_sql_proxy" {
-  name                     = "product-gke-cluster"
-  location                 = var.zone_name
-  network                  = google_compute_network.vpc_network.name
-  subnetwork               = google_compute_subnetwork.private_subnet.name
-  initial_node_count       = 1
-
-  private_cluster_config {
-    enable_private_nodes    = true   
-    enable_private_endpoint = true  
-  }
-
-  
-  master_authorized_networks_config {
-    cidr_blocks {
-      cidr_block = "0.0.0.0/0"  
-      display_name = "Allow All"
-    }
-  }
-
-  node_config {
-    oauth_scopes = [
-      "https://www.googleapis.com/auth/cloud-platform"
-    ]
-  }
-} 
