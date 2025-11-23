@@ -11,9 +11,7 @@ from time import time
 app = Flask(__name__)
 
 
-# --------------------------
-# JSON LOGGER FORMATTER
-# --------------------------
+
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -41,9 +39,7 @@ logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
 
-# --------------------------
-# ENV VARIABLES
-# --------------------------
+
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = int(os.getenv("DB_PORT"))
 DB_NAME = os.getenv("DB_NAME")
@@ -52,9 +48,7 @@ DB_PASS = os.getenv("DB_PASS")
 API_KEY = os.getenv("API_KEY")
 
 
-# --------------------------
-# DATABASE CONNECTION POOL
-# --------------------------
+
 try:
     db_pool = psycopg2.pool.SimpleConnectionPool(
         minconn=2,
@@ -93,9 +87,6 @@ def get_conn():
             db_pool.putconn(conn)
 
 
-# --------------------------
-# MIDDLEWARE: REQUEST LOGGING
-# --------------------------
 @app.before_request
 def log_request():
     g.start_time = time()
@@ -105,7 +96,7 @@ def log_request():
     except Exception:
         body = None
 
-    # Mask sensitive headers
+    
     headers = {
         k: ("***" if k.lower() in ["authorization", "x-api-key"] else v)
         for k, v in request.headers.items()
@@ -141,9 +132,7 @@ def log_response(response):
     return response
 
 
-# --------------------------
-# TABLE CREATION
-# --------------------------
+
 def create_table_if_not_exists():
     with get_conn() as conn:
         if not conn:
@@ -185,9 +174,7 @@ def create_table_if_not_exists():
 create_table_if_not_exists()
 
 
-# --------------------------
-# AUTH CHECK
-# --------------------------
+
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
@@ -203,9 +190,7 @@ def require_api_key():
     return True
 
 
-# --------------------------
-# ROUTES
-# --------------------------
+
 @app.route('/health')
 def health():
     return {"status": "healthy"}, 200
@@ -336,9 +321,7 @@ def delete_product(product_id):
             cur.close()
 
 
-# --------------------------
-# MAIN
-# --------------------------
+
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
     port = int(os.getenv("PORT", 8080))
