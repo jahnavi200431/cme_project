@@ -19,9 +19,9 @@ steps:
       - "-c"
       - |
         cd infra
-        echo "🔧 Initializing Terraform..."
+        echo " Initializing Terraform..."
         terraform init -input=false
-        echo "📄 Planning Terraform..."
+        echo "Planning Terraform..."
         terraform plan -out=tfplan -input=false
         # Uncomment the next line to apply
         # terraform apply -input=false -auto-approve tfplan
@@ -69,10 +69,8 @@ steps:
               --from-literal=API_KEY="$_API_KEY" \
               --dry-run=client -o yaml | kubectl apply -f -
         
-        echo "_DB_PASS: ${_DB_PASS:0:4}****"
-        echo "_API_KEY: ${_API_KEY:0:4}****"
 
-        echo "✅ Secret db-credentials synced successfully"
+        echo " Secret db-credentials synced successfully"
 
   ## ------------------------------------------------------
   # 5) Deploy to GKE
@@ -83,20 +81,20 @@ steps:
     args:
       - "-c"
       - |
-        echo "🚀 Starting deployment to GKE..."
+        echo " Starting deployment to GKE..."
         gcloud container clusters get-credentials products-gke-cluster1 \
           --zone=us-central1-a \
           --project=my-project-app-477009
 
-        echo "📦 Applying Kubernetes manifests..."
+        echo " Applying Kubernetes manifests..."
         kubectl apply -f k8s/deployment.yaml
 
-        echo "🔄 Updating Deployment with new image: ${_IMAGE}:${_TAG}"
+        echo " Updating Deployment with new image: ${_IMAGE}:${_TAG}"
         kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
 
-        echo "⏳ Waiting for rollout..."
+        echo " Waiting for rollout..."
         kubectl rollout status deployment/gke-rest-api --timeout=180s || (
-          echo "❌ Rollout failed"
+          echo " Rollout failed"
           kubectl describe deployment gke-rest-api
           kubectl get pods -o wide
           exit 1
@@ -137,7 +135,7 @@ steps:
 
         echo "LoadBalancer IP resolved: $$LB_IP"
 
-        echo "⏳ Checking /products endpoint..."
+        echo " Checking /products endpoint..."
         for i in $$(seq 1 8); do
           http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
           echo "Attempt $$i: HTTP $$http_status"
@@ -158,7 +156,7 @@ steps:
         chmod +x tests/integration_test.sh || true
         LB="$$LB_IP" bash tests/integration_test.sh
 
-        echo "✅ Integration tests passed."
+        echo " Integration tests passed."
 
 images:
   - "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:${_TAG}"
