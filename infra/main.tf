@@ -3,13 +3,34 @@ provider "google" {
   region  = var.region_name
 }
 
-
-data "google_compute_network" "vpc_network" {
+resource "google_compute_network" "vpc_network" {
   name                   = var.vpc_name
 }
-data "google_compute_subnetwork" "private_subnet" {
-     name                      = var.subnet_name
-    }
+
+
+resource "google_compute_subnetwork" "private_subnet" {
+  name                      = var.subnet_name
+  region                    = var.region_name
+  network                   = google_compute_network.vpc_network.id
+  ip_cidr_range             = "10.10.0.0/24"
+  private_ip_google_access  = true  
+}
+resource "google_container_cluster" "cluster" {
+  name                     = var.cluster_name
+  location                 = var.zone_name
+  deletion_protection      = false
+  remove_default_node_pool = false
+  initial_node_count       = 1
+  network                  = data.google_compute_network.vpc_network.name
+  subnetwork               = data.google_compute_subnetwork.private_subnet.name
+
+  private_cluster_config {
+    enable_private_nodes    = true
+    enable_private_endpoint = false  
+  }
+
+  depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
+} 
 
 resource "google_compute_global_address" "private_ip_range" {
   name          = "private-ip-range1"
@@ -24,24 +45,6 @@ resource "google_service_networking_connection" "private_service_connect" {
   reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
 }
  
-
-
-
-resource "google_compute_network" "vpc_network" {
-  name                   = var.vpc_name
-}
-
-
-resource "google_compute_subnetwork" "private_subnet" {
-  name                      = var.subnet_name
-  region                    = var.region_name
-  network                   = google_compute_network.vpc_network.id
-  ip_cidr_range             = "10.10.0.0/24"
-  private_ip_google_access  = true  
-}
- 
-
-
 
 resource "google_compute_service_attachment" "private_services_connection" {
   name            = "private-services-connection"
@@ -61,22 +64,7 @@ resource "google_compute_service_attachment" "private_services_connection" {
 } 
 
 
-  resource "google_container_cluster" "cluster" {
-  name                     = var.cluster_name
-  location                 = var.zone_name
-  deletion_protection      = false
-  remove_default_node_pool = false
-  initial_node_count       = 1
-  network                  = data.google_compute_network.vpc_network.name
-  subnetwork               = data.google_compute_subnetwork.private_subnet.name
-
-  private_cluster_config {
-    enable_private_nodes    = true
-    enable_private_endpoint = false  
-  }
-
-  depends_on = [data.google_compute_network.vpc_network, data.google_compute_subnetwork.private_subnet]
-} 
+  
 
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
