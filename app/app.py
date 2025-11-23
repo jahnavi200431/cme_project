@@ -9,9 +9,7 @@ from contextlib import contextmanager
 
 app = Flask(__name__)
 
-# -------------------------
-# JSON Logging (Cloud-friendly)
-# --------------------------
+
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -37,9 +35,7 @@ logger = logging.getLogger("my-project-app-477009")
 logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
-# --------------------------
-# DB and API key (env variables)
-# --------------------------
+
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = int(os.getenv("DB_PORT"))
 DB_NAME = os.getenv("DB_NAME")
@@ -47,9 +43,7 @@ DB_USER = os.getenv("DB_USER")
 DB_PASS = os.getenv("DB_PASS")
 API_KEY = os.getenv("API_KEY")
 
-# --------------------------
-# Connection Pool
-# --------------------------
+
 try:
     db_pool = psycopg2.pool.SimpleConnectionPool(
         minconn=2,
@@ -86,9 +80,7 @@ def get_conn():
         if conn:
             db_pool.putconn(conn)
 
-# --------------------------
-# Table creation
-# --------------------------
+
 def create_table_if_not_exists():
     with get_conn() as conn:
         if not conn:
@@ -109,7 +101,7 @@ def create_table_if_not_exists():
             """)
             conn.commit()
 
-            # Insert initial products if empty
+            
             cur.execute("SELECT COUNT(*) FROM product;")
             count = cur.fetchone()[0]
             if count == 0:
@@ -127,12 +119,9 @@ def create_table_if_not_exists():
         finally:
             cur.close()
 
-# Run table creation on module import
 create_table_if_not_exists()
 
-# --------------------------
-# API Key Check
-# --------------------------
+
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
@@ -147,9 +136,7 @@ def require_api_key():
         return False
     return True
 
-# --------------------------
-# Health & Readiness
-# --------------------------
+
 @app.route('/health')
 def health():
     return {"status": "healthy"}, 200
@@ -161,9 +148,7 @@ def readiness():
             return {"status": "ready"}, 200
         return {"status": "not ready"}, 500
 
-# --------------------------
-# CRUD Routes
-# --------------------------
+
 @app.route("/")
 def home():
     return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
@@ -275,9 +260,6 @@ def delete_product(product_id):
         finally:
             cur.close()
 
-# --------------------------
-# Main
-# --------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
     port = int(os.getenv("PORT", 8080))
