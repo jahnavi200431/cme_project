@@ -1,0 +1,162 @@
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+serviceAccount: "projects/my-project-app-477009/serviceAccounts/433503387155-compute@developer.gserviceaccount.com"
+
+substitutions:
+  _TAG: "$SHORT_SHA"
+  _IMAGE: "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api"
+
+steps:
+
+  ## --------------------------------------------------
+  # 1) Install Terraform
+  ## -------------------------------------------------
+  - name: hashicorp/terraform:1.6.6
+    entrypoint: "sh"
+    id: "Terraform Init & Plan"
+    args:
+      - "-c"
+      - |
+        cd infra
+        echo " Initializing Terraform..."
+        terraform init -input=false
+        echo "Planning Terraform..."
+        terraform plan -out=tfplan -input=false
+        # Uncomment the next line to apply
+        # terraform apply -input=false -auto-approve tfplan
+
+  ## ------------------------------------------------------
+  # 2) Build Docker Image
+  ## ------------------------------------------------------
+  - name: gcr.io/cloud-builders/docker
+    id: "Build Docker Image"
+    args:
+      [
+        "build",
+        "-t",
+        "${_IMAGE}:${_TAG}",
+        "-f",
+        "app/Dockerfile",
+        "."
+      ]
+
+  ## ------------------------------------------------------
+  # 3) Push Docker Image
+  ## ------------------------------------------------------
+  - name: gcr.io/cloud-builders/docker
+    id: "Push Docker Image"
+    args:
+      [
+        "push",
+        "${_IMAGE}:${_TAG}"
+      ]
+
+  ## ------------------------------------------------------
+  # 4) Sync Secrets from Secret Manager to Kubernetes
+  ## ------------------------------------------------------
+  - name: gcr.io/cloud-builders/gcloud
+    id: "Sync Secrets to K8s"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        _DB_PASS=$(gcloud secrets versions access latest --secret=db-password)
+        _API_KEY=$(gcloud secrets versions access latest --secret=api-key)
+
+        kubectl create secret generic db-credentials \
+              --from-literal=DB_PASS="$_DB_PASS" \
+              --from-literal=API_KEY="$_API_KEY" \
+              --dry-run=client -o yaml | kubectl apply -f -
+        
+
+        echo " Secret db-credentials synced successfully"
+
+  ## ------------------------------------------------------
+  # 5) Deploy to GKE
+  ## ------------------------------------------------------
+  - name: gcr.io/cloud-builders/gcloud
+    id: "Deploy to GKE"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        echo " Starting deployment to GKE..."
+        gcloud container clusters get-credentials products-gke-cluster1 \
+          --zone=us-central1-a \
+          --project=my-project-app-477009
+
+        echo " Applying Kubernetes manifests..."
+        kubectl apply -f k8s/deployment.yaml
+
+        echo " Updating Deployment with new image: ${_IMAGE}:${_TAG}"
+        kubectl set image deployment/gke-rest-api gke-rest-api=${_IMAGE}:${_TAG}
+
+        echo " Waiting for rollout..."
+        kubectl rollout status deployment/gke-rest-api --timeout=180s || (
+          echo " Rollout failed"
+          kubectl describe deployment gke-rest-api
+          kubectl get pods -o wide
+          exit 1
+        )
+
+  ## ------------------------------------------------------
+  # 6) Post-deployment checks & integration tests
+  ## ------------------------------------------------------
+  - name: gcr.io/cloud-builders/gcloud
+    id: "Post-Deployment Checks & Integration Tests"
+    entrypoint: "bash"
+    args:
+      - "-c"
+      - |
+        set -euo pipefail
+        API_KEY=$(gcloud secrets versions access latest --secret=api-key)
+        export API_KEY
+
+        echo "Running post-deployment checks..."
+        LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+        MAX_RETRIES=12
+        RETRY=0
+
+        while [ -z "$$LB_IP" ] && [ $$RETRY -lt $$MAX_RETRIES ]; do
+          echo "Waiting for LoadBalancer IP... (retry $$RETRY/$$MAX_RETRIES)"
+          sleep 10
+          LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
+          RETRY=$$((RETRY+1))
+        done
+
+        if [ -z "$$LB_IP" ]; then
+          echo "LoadBalancer IP not found. Exiting..."
+          kubectl describe svc gke-rest-api-service || true
+          kubectl get pods -l app=gke-rest-api -o wide || true
+          kubectl describe deployment gke-rest-api || true
+          exit 1
+        fi
+
+        echo "LoadBalancer IP resolved: $$LB_IP"
+
+        echo " Checking /products endpoint..."
+        for i in $$(seq 1 8); do
+          http_status=$$(curl -s -o /dev/null -w "%{http_code}" "http://$$LB_IP/products" || echo "000")
+          echo "Attempt $$i: HTTP $$http_status"
+          if [ "$$http_status" = "200" ]; then
+            echo "/products returned 200 OK"
+            break
+          fi
+          sleep 5
+        done
+
+        if [ "$$http_status" != "200" ]; then
+          echo "/products endpoint failing. Exiting..."
+          kubectl describe deployment gke-rest-api || true
+          exit 1
+        fi
+
+        echo "Running integration tests..."
+        chmod +x tests/integration_test.sh || true
+        LB="$$LB_IP" bash tests/integration_test.sh
+
+        echo " Integration tests passed."
+
+images:
+  - "us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:${_TAG}"

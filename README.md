@@ -8,7 +8,6 @@ _A Cloud-Native Application with Terraform IaC, Cloud SQL, Kubernetes, and CI/CD
 
 This project delivers a fully operational, cloud-native REST API deployed on Google Kubernetes Engine (GKE), integrated with a PostgreSQL backend hosted on Cloud SQL. The solution is packaged using Docker, orchestrated with Kubernetes, and fully automated through a Continuous Integration/Continuous Deployment (CI/CD) pipeline powered by Google Cloud Build.
 
-The implementation reflects industry standards in cloud engineering, DevOps, and scalable microservices design—suited for enterprise environments requiring reliability, security, maintainability, and automated software delivery.
 
 ---
 
@@ -29,9 +28,8 @@ The implementation reflects industry standards in cloud engineering, DevOps, and
 - Kubernetes resources include:
   - Deployments
   - Services
-  - Ingress
   - Horizontal Pod Autoscaler (HPA)
-  - Secrets
+ 
 
 ### 2.3 CI/CD Layer
 
@@ -54,18 +52,17 @@ The implementation reflects industry standards in cloud engineering, DevOps, and
 ```
 .
 ├── app/                   
-│   ├── main.py / app.js
-│   ├── requirements.txt / package.json
-│
+│   ├── app.py
+│   ├── requirements.txt 
+│   ├── Dockerfile
+|   |__start.sh
+|
 ├── k8s/                  
 │   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── ingress.yaml
-│   ├── hpa.yaml
-│   ├── configmap.yaml
-│   └── secret.yaml
-│
-├── terraform/            
+│   ├── ServiceAccount.yaml
+|
+|
+├── infra/            
 │   ├── main.tf
 │   ├── variables.tf
 │   ├── outputs.tf
@@ -73,9 +70,7 @@ The implementation reflects industry standards in cloud engineering, DevOps, and
 ├── tests/
 │   └── integration_tests.sh
 │
-├── ci-cd/
-|       |___cloudbuild.yaml      
-├── Dockerfile           
+|___cloudbuild.yaml                
 └── README.md            
 ```
 
@@ -103,7 +98,7 @@ The implementation reflects industry standards in cloud engineering, DevOps, and
 
 | Field        | Type         | Description         |
 | ------------ | ------------ | -------------------|
-| id           | UUID / INT   | Primary key         |
+| id           | SERIAL / INT   | Primary key         |
 | name         | VARCHAR(255) | Product name        |
 | description  | TEXT         | Product description |
 | price        | DECIMAL/FLOAT| Product price       |
@@ -124,7 +119,7 @@ pip install -r requirements.txt
 
 _Run application:_
 ```bash
-python app/main.py
+python app/app.py
 ```
 
 ### 6.2 Docker Build
@@ -172,7 +167,7 @@ The CI/CD pipeline automates the complete delivery workflow:
 ## 8. Security Framework
 
 - IAM least-privilege for GKE, Cloud Build, SQL access
-- Kubernetes Secrets for DB credentials
+- Kubernetes Secrets for DB Password
 - API-level authentication via API key 
 
 
@@ -182,7 +177,7 @@ The CI/CD pipeline automates the complete delivery workflow:
 
 **Logging**
 - Application logs forwarded to Cloud Logging
-- Pod-level logs accessible via `kubectl logs`
+ 
 
 **Monitoring**
 - Metrics tracked:
@@ -198,9 +193,9 @@ The CI/CD pipeline automates the complete delivery workflow:
 | Issue             | Description                       | Resolution                           |
 | ----------------- | --------------------------------- | ------------------------------------- |
 | CrashLoopBackOff  | App failing to start              | Validate Secrets/ConfigMaps           |
-| SQL Connection Error | Incorrect networking or credentials | Ensure Private IP + correct IAM roles |
+| SQL Connection Error | Incorrect networking or credentials | Ensure Private IP + cloud proxy running |
 | ImagePullError    | GKE unable to fetch container     | Grant Artifact Registry permissions   |
 | No External IP    | Service misconfiguration          | Set Service type to LoadBalancer      |
-| 503 / Ingress Issues | Routing failure                 | Validate Ingress + Service selectors  |
+
 
 ---
