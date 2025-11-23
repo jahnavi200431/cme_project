@@ -106,13 +106,12 @@ steps:
   - name: gcr.io/cloud-builders/gcloud
     id: "Post-Deployment Checks & Integration Tests"
     entrypoint: "bash"
-    env:
-      - API_KEY=$(gcloud secrets versions access latest --secret=api-key)
     args:
       - "-c"
       - |
         set -euo pipefail
-
+        API_KEY="$_API_KEY"
+        export API_KEY
         echo "Running post-deployment checks..."
         LB_IP=$$(kubectl get svc gke-rest-api-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}' --ignore-not-found || true)
         MAX_RETRIES=12
