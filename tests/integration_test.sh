@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # ---------------------------
-# Validate required env vars
+# Validate required env var
 # ---------------------------
 : "${LB:?ERROR: LB environment variable not set}"
 : "${API_KEY:?ERROR: API_KEY environment variable not set}"

@@ -1,18 +1,8 @@
-apiVersion: cloud.google.com/v1
-kind: BackendConfig
-metadata:
-  name: api-backendconfig
-spec:
-  healthCheck:
-    checkIntervalSec: 10
-    timeoutSec: 5
-    healthyThreshold: 2
-    unhealthyThreshold: 3
-    port: 8080
-    requestPath: /health
 
 ---
-
+# --------------------------
+# Deployment
+# --------------------------
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -21,114 +11,130 @@ metadata:
     app: gke-rest-api
 spec:
   replicas: 2
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
   selector:
     matchLabels:
       app: gke-rest-api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
   template:
     metadata:
       labels:
         app: gke-rest-api
     spec:
+      serviceAccountName: app-workload-sa
+      nodeSelector:
+        cloud.google.com/gke-nodepool: cloudsql-pool
+      terminationGracePeriodSeconds: 30
       containers:
         - name: gke-rest-api
           image: us-central1-docker.pkg.dev/my-project-app-477009/my-artifact-repo/gke-rest-api:latest
+          command: ["/bin/bash", "/app/start.sh"]
           ports:
             - containerPort: 8080
-
-          readinessProbe:
-            httpGet:
-              path: /ready
-              port: 8080
-            initialDelaySeconds: 30   # Give time to connect to DB
-            periodSeconds: 10
-            failureThreshold: 10
-
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8080
-            initialDelaySeconds: 60
-            periodSeconds: 20
-            failureThreshold: 5
-
-          resources:
-            requests:
-              cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "500m"
-              memory: "512Mi"
-
           env:
             - name: DB_HOST
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_HOST
+              value: "127.0.0.1"
+            - name: DB_PORT
+              value: "5432"
             - name: DB_NAME
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_NAME
+              value: "appdb"
             - name: DB_USER
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_USER
+              value: "user1"
             - name: DB_PASS
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: DB_PASS
-            - name: DB_PORT
-              valueFrom:
-                secretKeyRef:
-                  name: db-credentials
-                  key: DB_PORT
             - name: API_KEY
               valueFrom:
                 secretKeyRef:
                   name: db-credentials
                   key: API_KEY
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "256Mi"
+            limits:
+              cpu: "100m"
+              memory: "512Mi"
+
+        - name: cloud-sql-proxy
+          image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.10.0
+          args:
+            - "my-project-app-477009:us-central1:products-db-instance1"
+            - "--address=127.0.0.1"
+            - "--port=5432"
+            - "--auto-iam-authn"
+            - "--private-ip"
+          resources:
+            requests:
+              cpu: "25m"
+              memory: "128Mi"
+            limits:
+              cpu: "50m"
+              memory: "256Mi"
 
 ---
-
+# --------------------------
+# Service
+# --------------------------
 apiVersion: v1
 kind: Service
 metadata:
   name: gke-rest-api-service
+  namespace: default
 spec:
   type: LoadBalancer
   selector:
     app: gke-rest-api
   ports:
-    - name: http
+    - protocol: TCP
       port: 80
-      protocol: TCP
       targetPort: 8080
 
 ---
-
+# --------------------------
+# Horizontal Pod Autoscaler
+# --------------------------
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
   name: gke-rest-api-hpa
+  namespace: default
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
     name: gke-rest-api
   minReplicas: 2
-  maxReplicas: 5
+  maxReplicas: 10
   metrics:
     - type: Resource
       resource:
         name: cpu
         target:
           type: Utilization
-          averageUtilization: 60
+          averageUtilization: 50
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 70
