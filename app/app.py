@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, g
 import logging
 import sys
 import json
@@ -6,10 +6,14 @@ import psycopg2
 from psycopg2 import pool
 import os
 from contextlib import contextmanager
+from time import time
 
 app = Flask(__name__)
 
 
+# --------------------------
+# JSON LOGGER FORMATTER
+# --------------------------
 class JsonFormatter(logging.Formatter):
     def format(self, record):
         log = {
@@ -22,6 +26,7 @@ class JsonFormatter(logging.Formatter):
         else:
             log["message"] = record.getMessage()
         return json.dumps(log)
+
 
 json_handler = logging.StreamHandler(sys.stdout)
 json_handler.setFormatter(JsonFormatter())
@@ -36,6 +41,9 @@ logger.setLevel(logging.INFO)
 logger.handlers = [json_handler]
 
 
+# --------------------------
+# ENV VARIABLES
+# --------------------------
 DB_HOST = os.getenv("DB_HOST")
 DB_PORT = int(os.getenv("DB_PORT"))
 DB_NAME = os.getenv("DB_NAME")
@@ -44,6 +52,9 @@ DB_PASS = os.getenv("DB_PASS")
 API_KEY = os.getenv("API_KEY")
 
 
+# --------------------------
+# DATABASE CONNECTION POOL
+# --------------------------
 try:
     db_pool = psycopg2.pool.SimpleConnectionPool(
         minconn=2,
@@ -64,6 +75,7 @@ except Exception as e:
     logger.error({"event": "db_pool_error", "error": str(e)}, exc_info=True)
     db_pool = None
 
+
 @contextmanager
 def get_conn():
     if not db_pool:
@@ -81,6 +93,57 @@ def get_conn():
             db_pool.putconn(conn)
 
 
+# --------------------------
+# MIDDLEWARE: REQUEST LOGGING
+# --------------------------
+@app.before_request
+def log_request():
+    g.start_time = time()
+
+    try:
+        body = request.get_data(as_text=True)
+    except Exception:
+        body = None
+
+    # Mask sensitive headers
+    headers = {
+        k: ("***" if k.lower() in ["authorization", "x-api-key"] else v)
+        for k, v in request.headers.items()
+    }
+
+    logger.info({
+        "event": "http_request",
+        "method": request.method,
+        "path": request.path,
+        "headers": headers,
+        "body": body,
+    })
+
+
+@app.after_request
+def log_response(response):
+    duration = round((time() - g.start_time) * 1000, 2)
+
+    try:
+        response_body = response.get_data(as_text=True)
+    except Exception:
+        response_body = None
+
+    logger.info({
+        "event": "http_response",
+        "method": request.method,
+        "path": request.path,
+        "status": response.status_code,
+        "duration_ms": duration,
+        "response_body": response_body,
+    })
+
+    return response
+
+
+# --------------------------
+# TABLE CREATION
+# --------------------------
 def create_table_if_not_exists():
     with get_conn() as conn:
         if not conn:
@@ -101,7 +164,6 @@ def create_table_if_not_exists():
             """)
             conn.commit()
 
-            
             cur.execute("SELECT COUNT(*) FROM product;")
             count = cur.fetchone()[0]
             if count == 0:
@@ -119,9 +181,13 @@ def create_table_if_not_exists():
         finally:
             cur.close()
 
+
 create_table_if_not_exists()
 
 
+# --------------------------
+# AUTH CHECK
+# --------------------------
 def require_api_key():
     provided_key = (
         request.headers.get("X-API-KEY")
@@ -137,9 +203,13 @@ def require_api_key():
     return True
 
 
+# --------------------------
+# ROUTES
+# --------------------------
 @app.route('/health')
 def health():
     return {"status": "healthy"}, 200
+
 
 @app.route('/ready')
 def readiness():
@@ -152,7 +222,8 @@ def readiness():
 @app.route("/")
 def home():
     return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
-    
+
+
 @app.route("/products", methods=["GET"])
 def get_products():
     with get_conn() as conn:
@@ -166,6 +237,7 @@ def get_products():
             return jsonify([dict(zip(columns, row)) for row in rows])
         finally:
             cur.close()
+
 
 @app.route("/products/<int:product_id>", methods=["GET"])
 def get_product(product_id):
@@ -182,6 +254,7 @@ def get_product(product_id):
             return jsonify(dict(zip(columns, row)))
         finally:
             cur.close()
+
 
 @app.route("/products", methods=["POST"])
 def add_product():
@@ -207,6 +280,7 @@ def add_product():
             return {"message": "Product added!", "id": new_id}, 201
         finally:
             cur.close()
+
 
 @app.route("/products/<int:product_id>", methods=["PUT"])
 def update_product(product_id):
@@ -242,6 +316,7 @@ def update_product(product_id):
         finally:
             cur.close()
 
+
 @app.route("/products/<int:product_id>", methods=["DELETE"])
 def delete_product(product_id):
     if not require_api_key():
@@ -260,6 +335,10 @@ def delete_product(product_id):
         finally:
             cur.close()
 
+
+# --------------------------
+# MAIN
+# --------------------------
 if __name__ == "__main__":
     logger.info({"event": "starting_server"})
     port = int(os.getenv("PORT", 8080))
