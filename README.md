@@ -98,7 +98,7 @@ This project delivers a fully operational, cloud-native REST API deployed on Goo
 
 | Field        | Type         | Description         |
 | ------------ | ------------ | -------------------|
-| id           | UUID / INT   | Primary key         |
+| id           | SERIAL / INT   | Primary key         |
 | name         | VARCHAR(255) | Product name        |
 | description  | TEXT         | Product description |
 | price        | DECIMAL/FLOAT| Product price       |
