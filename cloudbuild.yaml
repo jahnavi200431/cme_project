@@ -107,7 +107,7 @@ steps:
     id: "Post-Deployment Checks & Integration Tests"
     entrypoint: "bash"
     env:
-      - API_KEY=restapi123
+      - API_KEY=$(gcloud secrets versions access latest --secret=api-key)
     args:
       - "-c"
       - |
