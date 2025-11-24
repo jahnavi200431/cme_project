@@ -39,14 +39,15 @@ resource "google_container_cluster" "cluster" {
     enable_private_endpoint = false
   }
 
-  depends_on = [
-    data.google_compute_network.vpc_network,
-    data.google_compute_subnetwork.private_subnet
-  ]
 workload_identity_config {
     identity_namespace = "${var.project_id}.svc.id.goog"
   }
   
+  depends_on = [
+    data.google_compute_network.vpc_network,
+    data.google_compute_subnetwork.private_subnet
+  ]
+
 }
 
 resource "google_container_node_pool" "primary_nodes" {
