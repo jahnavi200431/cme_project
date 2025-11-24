@@ -51,6 +51,35 @@ resource "google_container_cluster" "cluster" {
   ]
 }
 
+resource "google_container_node_pool" "cloudsql_pool" {
+name = "cloudsql-pool"
+cluster = google_container_cluster.cluster.name
+location = google_container_cluster.cluster.location
+
+
+node_count = 1
+
+
+autoscaling {
+min_node_count = 0
+max_node_count = 2
+}
+
+
+node_config {
+machine_type = "e2-medium"
+image_type = "COS_CONTAINERD"
+oauth_scopes = ["https://www.googleapis.com/auth/cloud-platform"]
+tags = ["gke-node"]
+
+
+metadata = {
+disable-legacy-endpoints = "true"
+}
+}
+management { auto_upgrade = true auto_repair = true }
+}
+
 # ----------- CLOUD SQL INSTANCE PRIVATE IP -----------------
 
 resource "google_sql_database_instance" "db_instance" {
