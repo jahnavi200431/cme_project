@@ -86,6 +86,7 @@ steps:
           --project=my-project-app-477009
 
         echo " Applying Kubernetes manifests..."
+        kubectl apply -f k8s/ServiceAccount.yaml
         kubectl apply -f k8s/deployment.yaml
 
         echo " Updating Deployment with new image: ${_IMAGE}:${_TAG}"
