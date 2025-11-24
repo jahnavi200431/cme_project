@@ -38,6 +38,7 @@ data "google_compute_subnetwork" "private_subnet" {
 # GKE CLUSTER
 # ---------------------------
 resource "google_container_cluster" "cluster" {
+  provider                 = google-beta
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
@@ -64,6 +65,7 @@ workload_identity_config {
 }
 
 resource "google_container_node_pool" "primary_nodes" {
+  provider   = google-beta
   name       = "cloudsql-pool"
   cluster    = google_container_cluster.cluster.name
   location   = var.zone_name
