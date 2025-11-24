@@ -1,18 +1,6 @@
 # ---------------------------
 # PROVIDER
 # ---------------------------
-terraform {
-  required_providers {
-    google = {
-      source  = "hashicorp/google"
-      version = ">= 5.0"
-    }
-    google-beta = {
-      source  = "hashicorp/google-beta"
-      version = ">= 5.0"
-    }
-  }
-}
 
 provider "google-beta" {
   project = var.project_id
@@ -38,7 +26,7 @@ data "google_compute_subnetwork" "private_subnet" {
 # GKE CLUSTER
 # ---------------------------
 resource "google_container_cluster" "cluster" {
-  provider                 = google-beta
+  
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
@@ -53,9 +41,6 @@ resource "google_container_cluster" "cluster" {
     enable_private_endpoint = false
   }
 
-workload_identity_config {
-    identity_namespace = "${var.project_id}.svc.id.goog"
-  }
   
   depends_on = [
     data.google_compute_network.vpc_network,
@@ -65,7 +50,7 @@ workload_identity_config {
 }
 
 resource "google_container_node_pool" "primary_nodes" {
-  provider   = google-beta
+  
   name       = "cloudsql-pool"
   cluster    = google_container_cluster.cluster.name
   location   = var.zone_name
