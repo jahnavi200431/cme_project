@@ -9,7 +9,7 @@ substitutions:
 
 steps:
 
-  ## --------------------------------------------------
+  ## -------------------------------------------------
   # 1) Install Terraform
   ## -------------------------------------------------
   - name: hashicorp/terraform:1.6.6
@@ -23,7 +23,6 @@ steps:
         terraform init -input=false
         echo "Planning Terraform..."
         terraform plan -out=tfplan -input=false
-        # Uncomment the next line to apply
         # terraform apply -input=false -auto-approve tfplan
 
   ## ------------------------------------------------------
