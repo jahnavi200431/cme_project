@@ -23,7 +23,7 @@ steps:
         terraform init -input=false
         echo "Planning Terraform..."
         terraform plan -out=tfplan -input=false
-        # terraform apply -input=false -auto-approve tfplan
+        terraform apply -input=false -auto-approve 
 
   ## ------------------------------------------------------
   # 2) Build Docker Image
