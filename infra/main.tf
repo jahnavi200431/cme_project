@@ -43,7 +43,9 @@ resource "google_container_cluster" "cluster" {
     data.google_compute_network.vpc_network,
     data.google_compute_subnetwork.private_subnet
   ]
-
+workload_identity_config {
+    identity_namespace = "${var.project_id}.svc.id.goog"
+  }
   
 }
 
