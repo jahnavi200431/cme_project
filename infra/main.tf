@@ -12,7 +12,7 @@ data "google_compute_subnetwork" "private_subnet" {
   region = var.region_name
 }
 
-# ----------- PRIVATE SERVICE CONNECT (Cloud SQL) -----------------
+# ----------- PRIVATE SERVICE CONNECT (Cloud SQL) ----------------
 
 resource "google_compute_global_address" "private_ip_range" {
   name          = "private-ip-range1"
