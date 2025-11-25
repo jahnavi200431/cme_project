@@ -137,7 +137,7 @@ kubectl get svc
 
 ### 6.4 Terraform Infrastructure Deployment
 ```bash
-cd terraform/
+cd infra/
 terraform init
 terraform plan
 terraform apply -auto-approve
