@@ -1,8 +1,16 @@
+# --------------------------
+# PROVIDER
+# --------------------------
+
 provider "google" {
   project = var.project_id
   region  = var.region_name
+  zone    = var.zone_name
 }
 
+# ---------------------------
+# DATA SOURCES
+# ---------------------------
 data "google_compute_network" "vpc_network" {
   name = var.vpc_name
 }
@@ -12,29 +20,17 @@ data "google_compute_subnetwork" "private_subnet" {
   region = var.region_name
 }
 
-# ----------- PRIVATE SERVICE CONNECT (Cloud SQL) ----------------
 
-resource "google_compute_global_address" "private_ip_range" {
-  name          = "private-ip-range1"
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 16
-  network       = data.google_compute_network.vpc_network.self_link
-}
 
-resource "google_service_networking_connection" "private_service_connect" {
-  network                 = data.google_compute_network.vpc_network.self_link
-  service                 = "services/servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
-}
-
-# ----------- GKE CLUSTER -----------------
-
+# ---------------------------
+# GKE CLUSTER
+# ---------------------------
 resource "google_container_cluster" "cluster" {
+  
   name                     = var.cluster_name
   location                 = var.zone_name
   deletion_protection      = false
-  remove_default_node_pool = false
+  remove_default_node_pool = true
   initial_node_count       = 1
 
   network    = data.google_compute_network.vpc_network.self_link
@@ -45,15 +41,42 @@ resource "google_container_cluster" "cluster" {
     enable_private_endpoint = false
   }
 
+  
   depends_on = [
     data.google_compute_network.vpc_network,
     data.google_compute_subnetwork.private_subnet
   ]
+
 }
 
+resource "google_container_node_pool" "primary_nodes" {
+  
+  name       = "cloudsql-pool"
+  cluster    = google_container_cluster.cluster.name
+  location   = var.zone_name
+  node_count = 2
 
-# ----------- CLOUD SQL INSTANCE PRIVATE IP -----------------
+  node_config {
+    machine_type = "e2-medium"
+    oauth_scopes = [
+      "https://www.googleapis.com/auth/cloud-platform",
+    ]
+    tags = ["gke-node"]
+  }
 
+  autoscaling {
+    min_node_count = 0
+    max_node_count = 2
+  }
+
+  depends_on = [
+    google_container_cluster.cluster
+  ]
+}
+
+# ---------------------------
+# CLOUD SQL INSTANCE PRIVATE IP
+# ---------------------------
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -63,17 +86,12 @@ resource "google_sql_database_instance" "db_instance" {
     tier = "db-f1-micro"
 
     ip_configuration {
+      # Uses the existing PSA connection automatically
       private_network = data.google_compute_network.vpc_network.self_link
       ipv4_enabled    = false
     }
   }
-
-  depends_on = [
-    google_service_networking_connection.private_service_connect
-  ]
 }
-
-# ----------- SECRET MANAGER -----------------
 
 data "google_secret_manager_secret_version" "db_password" {
   secret = "db-password"
@@ -89,6 +107,7 @@ resource "google_sql_user" "db_user" {
   instance = google_sql_database_instance.db_instance.name
   password = data.google_secret_manager_secret_version.db_password.secret_data
 }
+
 
 # ----------- FIREWALL -----------------
 
@@ -106,3 +125,4 @@ resource "google_compute_firewall" "allow_internal" {
   source_ranges = ["10.10.0.0/24"]
   target_tags   = ["gke-node"]
 }
+

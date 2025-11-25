@@ -1,8 +1,10 @@
 
+
 variable "project_id" {
   description = "The Google Cloud project ID"
   default = "my-project-app-477009"
 }
+
 
 variable "region_name" {
   description = "The region where resources will be created"

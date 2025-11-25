@@ -9,9 +9,9 @@ substitutions:
 
 steps:
 
-  ## -------------------------------------------------
+  ## -----------------------------------------------
   # 1) Install Terraform
-  ## -------------------------------------------------
+  ## ------------------------------------------------
   - name: hashicorp/terraform:1.6.6
     entrypoint: "sh"
     id: "Terraform"
@@ -23,7 +23,7 @@ steps:
         terraform init -input=false
         echo "Planning Terraform..."
         terraform plan -out=tfplan -input=false
-        # terraform apply -input=false -auto-approve tfplan
+        terraform apply -input=false -auto-approve 
 
   ## ------------------------------------------------------
   # 2) Build Docker Image
@@ -86,6 +86,7 @@ steps:
           --project=my-project-app-477009
 
         echo " Applying Kubernetes manifests..."
+        kubectl apply -f k8s/ServiceAccount.yaml
         kubectl apply -f k8s/deployment.yaml
 
         echo " Updating Deployment with new image: ${_IMAGE}:${_TAG}"
