@@ -204,7 +204,7 @@ def readiness():
 
 @app.route("/")
 def home():
-    return {"message": "Welcome to Product API (GKE + Cloud SQL)"}, 200
+    return {"message": "Welcome to Product API "}, 200
 
 
 @app.route("/products", methods=["GET"])
