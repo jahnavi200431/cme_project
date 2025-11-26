@@ -1,6 +1,4 @@
-# --------------------------
-# PROVIDER
-# --------------------------
+
 
 provider "google" {
   project = var.project_id
@@ -8,9 +6,7 @@ provider "google" {
   zone    = var.zone_name
 }
 
-# ---------------------------
-# DATA SOURCES
-# ---------------------------
+
 data "google_compute_network" "vpc_network" {
   name = var.vpc_name
 }
@@ -21,10 +17,6 @@ data "google_compute_subnetwork" "private_subnet" {
 }
 
 
-
-# ---------------------------
-# GKE CLUSTER
-# ---------------------------
 resource "google_container_cluster" "cluster" {
   
   name                     = var.cluster_name
@@ -74,9 +66,7 @@ resource "google_container_node_pool" "primary_nodes" {
   ]
 }
 
-# ---------------------------
-# CLOUD SQL INSTANCE PRIVATE IP
-# ---------------------------
+
 resource "google_sql_database_instance" "db_instance" {
   name             = var.db_instance_name
   database_version = "POSTGRES_15"
@@ -109,7 +99,7 @@ resource "google_sql_user" "db_user" {
 }
 
 
-# ----------- FIREWALL -----------------
+
 
 resource "google_compute_firewall" "allow_internal" {
   name       = var.firewall_name
